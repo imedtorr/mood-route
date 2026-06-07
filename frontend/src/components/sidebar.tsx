@@ -39,7 +39,7 @@ export function Sidebar() {
 
   return (
     <>
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar md:flex">
+      <aside className="hidden h-svh w-64 shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar md:flex">
         <div className="flex items-center gap-2 px-5 py-5">
           <span className="flex size-8 items-center justify-center rounded-xl bg-primary text-primary-foreground">
             <Compass className="size-4" />

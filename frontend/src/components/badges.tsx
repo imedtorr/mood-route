@@ -84,16 +84,12 @@ export function SourceBadge({
   className?: string;
 }) {
   const map: Record<string, { cls: string; Icon: typeof CheckCircle2 }> = {
-    Pinterest: {
-      cls: "bg-destructive/10 text-destructive border-destructive/20",
-      Icon: BookmarkCheck,
-    },
-    Instagram: {
+    Screenshot: { cls: "bg-muted text-muted-foreground border-border", Icon: Search },
+    Article: { cls: "bg-info/10 text-info border-info/25", Icon: BookmarkCheck },
+    Text: {
       cls: "bg-agent-planner/10 text-agent-planner border-agent-planner/20",
       Icon: Sparkles,
     },
-    Screenshot: { cls: "bg-muted text-muted-foreground border-border", Icon: Search },
-    Article: { cls: "bg-info/10 text-info border-info/25", Icon: BookmarkCheck },
     Saved: { cls: "bg-primary/10 text-primary border-primary/20", Icon: BookmarkCheck },
     "RAG Similar": {
       cls: "bg-agent-planner/10 text-agent-planner border-agent-planner/25",
@@ -101,7 +97,7 @@ export function SourceBadge({
     },
     "Verified Recommendation": { cls: "bg-info/10 text-info border-info/25", Icon: CheckCircle2 },
   };
-  const { cls, Icon } = map[source];
+  const { cls, Icon } = map[source] ?? map.Screenshot;
   return (
     <span
       className={cn(

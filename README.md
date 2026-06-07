@@ -1,14 +1,14 @@
 # MoodRoute
 
-AI travel workspace: transform Pinterest/Instagram inspiration into a structured knowledge base and explainable multi-agent itineraries.
+AI travel workspace: turn screenshots, article links, and place names into a structured knowledge base and explainable multi-agent itineraries.
 
 ## Stack
 
 - **Frontend:** TanStack Start + React (`frontend/`)
 - **Backend:** FastAPI + LangGraph + SQLite + ChromaDB + FastEmbed (`backend/`)
-- **LLM:** GigaChat (optional — heuristic fallback without credentials)
-- **Search:** Tavily (optional)
-- **Vision/OCR:** Ollama + moondream (optional)
+- **Ingest (local):** Ollama vision + text models (screenshots, articles, place lookup)
+- **Polish (optional):** GigaChat text — place cards and route narrative
+- **Search:** Tavily (optional — place lookup and verification)
 - **Map:** Leaflet + OpenStreetMap
 
 ## Quick start
@@ -17,7 +17,7 @@ AI travel workspace: transform Pinterest/Instagram inspiration into a structured
 
 ```bash
 cd backend
-python3 -m pip install -r requirements.txt   # requires pip
+python3 -m pip install -r requirements.txt
 cp .env.example .env
 # Add GIGACHAT_CREDENTIALS and TAVILY_API_KEY if available
 
@@ -26,14 +26,17 @@ python3 -m uvicorn app.main:app --reload --port 8000
 
 Seed runs automatically on startup (Japan Autumn / Tokyo demo data).
 
-Optional Ollama:
+### 2. Ollama (recommended for ingest)
 
 ```bash
 docker compose up -d ollama
-docker exec -it <ollama-container> ollama pull moondream
+docker exec -it $(docker compose ps -q ollama) ollama pull llama3.2-vision:11b
+docker exec -it $(docker compose ps -q ollama) ollama pull qwen2.5:7b
 ```
 
-### 2. Frontend
+Requires ~8GB VRAM for `llama3.2-vision:11b`. On weaker hardware, set `OLLAMA_VISION_MODEL=moondream` in `.env`.
+
+### 3. Frontend
 
 ```bash
 cd frontend
@@ -48,7 +51,7 @@ Set `VITE_USE_MOCK=true` in `.env` to run UI without backend.
 
 ## Demo script (defense)
 
-1. **Inbox** — paste article URL + upload café screenshot → watch pipeline statuses
+1. **Inbox** — paste article URL + upload café screenshot + type place name (e.g. Fuglen Tokyo)
 2. **Agent Activity** — Curator → Researcher → Verifier timeline
 3. **Review Queue** — Confirm / Merge duplicate / Edit low-confidence
 4. **Places** — filter Coffee Culture, semantic search in topbar
@@ -59,9 +62,10 @@ Set `VITE_USE_MOCK=true` in `.env` to run UI without backend.
 
 ```
 User → TanStack UI → REST API → LangGraph Supervisor
-                              → Curator (Ollama + GigaChat)
+                              → Curator (Ollama ingest)
+                              → GigaChat text (place cards)
                               → Researcher (Tavily + Nominatim + RAG)
-                              → Planner (geo clustering + preferences)
+                              → Planner (geo clustering + GigaChat narrative)
                               → Verifier (duplicates + HITL queue)
 ```
 

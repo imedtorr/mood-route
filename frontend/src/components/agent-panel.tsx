@@ -38,13 +38,14 @@ export function AgentPanel() {
       <aside
         className={cn(
           "shrink-0 border-l border-border bg-card transition-all duration-300",
+          "lg:h-svh lg:overflow-hidden",
           "max-lg:fixed max-lg:inset-y-0 max-lg:right-0 max-lg:z-40 max-lg:w-[88vw] max-lg:max-w-sm max-lg:shadow-xl",
           agentOpen
             ? "w-80 translate-x-0"
             : "w-0 overflow-hidden border-l-0 max-lg:translate-x-full",
         )}
       >
-        <div className="flex h-full w-80 max-w-full flex-col">
+        <div className="flex h-full min-h-0 w-80 max-w-full flex-col">
           <div className="flex items-start justify-between gap-2 border-b border-border px-5 py-4">
             <div className="flex items-start gap-2.5">
               <span className="mt-0.5 flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">

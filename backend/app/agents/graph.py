@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.agents.planner import generate_itinerary
 from app.db.models import PlaceModel
-from app.schemas import ItineraryDay, SourcesSummary, TripGenerateRequest
+from app.schemas import ItineraryDay, ItineraryStop, SourcesSummary, TripGenerateRequest
 from app.services.agent_log import log_agent_event
 
 
@@ -16,6 +16,37 @@ class TripState(TypedDict):
     days: list[ItineraryDay]
     sources: SourcesSummary
     route_summary: str
+
+
+def _filter_unverified_stops(days: list[ItineraryDay]) -> list[ItineraryDay]:
+    filtered_days: list[ItineraryDay] = []
+    for day in days:
+        kept_stops = [stop for stop in day.stops if stop.verification != "Needs Recheck"]
+        if not kept_stops:
+            filtered_days.append(day)
+            continue
+        renumbered = [
+            ItineraryStop(
+                n=index + 1,
+                time=stop.time,
+                title=stop.title,
+                category=stop.category,
+                district=stop.district,
+                travelNote=stop.travelNote,
+                aestheticNote=stop.aestheticNote,
+                reason=stop.reason,
+                source=stop.source,
+                verification=stop.verification,
+                mood=stop.mood,
+                image=stop.image,
+                lat=stop.lat,
+                lng=stop.lng,
+                placeId=stop.placeId,
+            )
+            for index, stop in enumerate(kept_stops)
+        ]
+        filtered_days.append(ItineraryDay(day=day.day, theme=day.theme, stops=renumbered))
+    return filtered_days
 
 
 async def run_trip_generation(
@@ -49,6 +80,25 @@ async def run_trip_generation(
         return state
 
     async def verifier(state: TripState) -> TripState:
+        original_stop_count = sum(len(day.stops) for day in state["days"])
+        state["days"] = _filter_unverified_stops(state["days"])
+        filtered_stop_count = sum(len(day.stops) for day in state["days"])
+        removed = original_stop_count - filtered_stop_count
+        log_agent_event(
+            db,
+            state["workspace_id"],
+            "Verifier Agent",
+            "Success",
+            (
+                f"Filtered itinerary: removed {removed} stop(s) flagged Needs Recheck."
+                if removed
+                else "Itinerary passed verification — no stops removed."
+            ),
+            confidence=0.9 if removed == 0 else 0.82,
+            tools=["verify_place_status"],
+            input_preview=f"{original_stop_count} stops",
+            output_preview=f"{filtered_stop_count} stops kept",
+        )
         return state
 
     graph = StateGraph(TripState)

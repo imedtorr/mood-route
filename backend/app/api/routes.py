@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
-from app.agents.curator import detect_source
+from app.agents.curator import detect_source, is_blocked_social_url
 from app.agents.graph import run_trip_generation
 from app.config import settings
 from app.db.database import SessionLocal, get_db
@@ -18,7 +18,7 @@ from app.db.models import (
     UploadModel,
     WorkspaceModel,
 )
-from app.pipelines.ingest import run_ingest_pipeline
+from app.pipelines.ingest import TERMINAL_UPLOAD_STATUSES, run_ingest_pipeline
 from app.rag.store import search_places, upsert_place, delete_place
 from app.services.countries import country_to_flag, default_trip_name
 
@@ -30,6 +30,7 @@ from app.schemas import (
     PreferencesUpdate,
     ReviewActionRequest,
     ReviewCard,
+    TextUploadRequest,
     TripGenerateRequest,
     Upload,
     UrlUploadRequest,
@@ -64,6 +65,19 @@ def get_place_or_404(db: Session, workspace_id: str, place_id: str) -> PlaceMode
     if not place:
         raise HTTPException(status_code=404, detail="Place not found")
     return place
+
+
+def permanently_remove_place(db: Session, workspace_id: str, place: PlaceModel) -> None:
+    delete_place(workspace_id, place.id)
+    reviews = db.query(ReviewModel).filter(
+        ReviewModel.workspace_id == workspace_id,
+        ReviewModel.resolved == False,
+    ).all()
+    for review in reviews:
+        if place.id in review.place_ids:
+            review.resolved = True
+            db.add(review)
+    db.delete(place)
 
 
 PLACE_EDIT_FIELDS = {
@@ -156,11 +170,15 @@ def search_places_endpoint(
     if not place_ids:
         places = db.query(PlaceModel).filter(
             PlaceModel.workspace_id == workspace_id,
+            PlaceModel.status == "active",
             PlaceModel.title.ilike(f"%{q}%"),
         ).limit(12).all()
         return PlaceSearchResult(places=[place_to_schema(p) for p in places], query=q)
     id_order = {pid: i for i, pid in enumerate(place_ids)}
-    places = db.query(PlaceModel).filter(PlaceModel.id.in_(place_ids)).all()
+    places = db.query(PlaceModel).filter(
+        PlaceModel.id.in_(place_ids),
+        PlaceModel.status == "active",
+    ).all()
     places.sort(key=lambda p: id_order.get(p.id, 999))
     return PlaceSearchResult(places=[place_to_schema(p) for p in places], query=q)
 
@@ -191,11 +209,45 @@ def delete_place_endpoint(
 ):
     get_workspace_or_404(db, workspace_id)
     place = get_place_or_404(db, workspace_id, place_id)
-    place.status = "rejected"
-    delete_place(workspace_id, place.id)
-    db.add(place)
+    permanently_remove_place(db, workspace_id, place)
     db.commit()
     return {"ok": True}
+
+
+def _place_ids_by_upload(db: Session, workspace_id: str, upload_ids: list[str]) -> dict[str, list[str]]:
+    if not upload_ids:
+        return {}
+    rows = (
+        db.query(PlaceModel.upload_id, PlaceModel.id)
+        .filter(
+            PlaceModel.workspace_id == workspace_id,
+            PlaceModel.upload_id.in_(upload_ids),
+            PlaceModel.status == "active",
+        )
+        .all()
+    )
+    grouped: dict[str, list[str]] = {}
+    for upload_id, place_id in rows:
+        if upload_id:
+            grouped.setdefault(upload_id, []).append(place_id)
+    return grouped
+
+
+def get_upload_or_404(db: Session, workspace_id: str, upload_id: str) -> UploadModel:
+    upload = db.query(UploadModel).filter(
+        UploadModel.id == upload_id,
+        UploadModel.workspace_id == workspace_id,
+    ).first()
+    if not upload:
+        raise HTTPException(status_code=404, detail="Upload not found")
+    return upload
+
+
+def _remove_upload_file(upload: UploadModel) -> None:
+    if upload.file_path:
+        path = Path(upload.file_path)
+        if path.exists():
+            path.unlink(missing_ok=True)
 
 
 @router.get("/workspaces/{workspace_id}/uploads", response_model=list[Upload])
@@ -204,17 +256,41 @@ def list_uploads(workspace_id: str, db: Session = Depends(get_db)):
     uploads = db.query(UploadModel).filter(UploadModel.workspace_id == workspace_id).order_by(
         UploadModel.created_at.desc()
     ).all()
-    return [upload_to_schema(u) for u in uploads]
+    place_ids_map = _place_ids_by_upload(db, workspace_id, [u.id for u in uploads])
+    return [upload_to_schema(u, place_ids_map.get(u.id, [])) for u in uploads]
 
 
 @router.get("/workspaces/{workspace_id}/uploads/{upload_id}", response_model=Upload)
 def get_upload(workspace_id: str, upload_id: str, db: Session = Depends(get_db)):
-    upload = db.query(UploadModel).filter(
-        UploadModel.id == upload_id, UploadModel.workspace_id == workspace_id
-    ).first()
-    if not upload:
-        raise HTTPException(status_code=404, detail="Upload not found")
+    upload = get_upload_or_404(db, workspace_id, upload_id)
+    place_ids = _place_ids_by_upload(db, workspace_id, [upload.id]).get(upload.id, [])
+    return upload_to_schema(upload, place_ids)
+
+
+@router.post("/workspaces/{workspace_id}/uploads/{upload_id}/cancel", response_model=Upload)
+def cancel_upload(workspace_id: str, upload_id: str, db: Session = Depends(get_db)):
+    upload = get_upload_or_404(db, workspace_id, upload_id)
+    if upload.status in TERMINAL_UPLOAD_STATUSES:
+        raise HTTPException(status_code=400, detail="Upload is not running")
+    upload.status = "Cancelled"
+    upload.progress = 100
+    db.add(upload)
+    db.commit()
+    db.refresh(upload)
     return upload_to_schema(upload)
+
+
+@router.delete("/workspaces/{workspace_id}/uploads/{upload_id}")
+def delete_upload(workspace_id: str, upload_id: str, db: Session = Depends(get_db)):
+    upload = get_upload_or_404(db, workspace_id, upload_id)
+    if upload.status not in TERMINAL_UPLOAD_STATUSES:
+        upload.status = "Cancelled"
+        db.add(upload)
+        db.commit()
+    _remove_upload_file(upload)
+    db.delete(upload)
+    db.commit()
+    return {"ok": True}
 
 
 def _run_ingest_task(upload_id: str) -> None:
@@ -233,6 +309,11 @@ def create_url_upload(
     db: Session = Depends(get_db),
 ):
     get_workspace_or_404(db, workspace_id)
+    if is_blocked_social_url(body.url):
+        raise HTTPException(
+            status_code=400,
+            detail="Only article links are supported. For social media posts, upload a screenshot instead.",
+        )
     upload = UploadModel(
         id=f"u{uuid.uuid4().hex[:10]}",
         workspace_id=workspace_id,
@@ -243,6 +324,31 @@ def create_url_upload(
         image="https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=400&h=400&q=80",
         note=body.note,
         raw_url=body.url,
+    )
+    db.add(upload)
+    db.commit()
+    db.refresh(upload)
+    background_tasks.add_task(_run_ingest_task, upload.id)
+    return upload_to_schema(upload)
+
+
+@router.post("/workspaces/{workspace_id}/uploads/text", response_model=Upload)
+def create_text_upload(
+    workspace_id: str,
+    body: TextUploadRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    get_workspace_or_404(db, workspace_id)
+    upload = UploadModel(
+        id=f"u{uuid.uuid4().hex[:10]}",
+        workspace_id=workspace_id,
+        title=body.query.strip()[:120],
+        source="Text",
+        status="Extracting places",
+        progress=8,
+        image="https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=400&h=400&q=80",
+        note=body.note,
     )
     db.add(upload)
     db.commit()
@@ -321,18 +427,14 @@ def review_action(
         if review.place_ids:
             place = db.get(PlaceModel, review.place_ids[0])
             if place:
-                place.status = "rejected"
-                delete_place(workspace_id, place.id)
-                db.add(place)
+                permanently_remove_place(db, workspace_id, place)
     elif body.action == "merge" and len(review.place_ids) >= 2:
         keep_id = body.mergeIntoPlaceId or review.place_ids[0]
         for pid in review.place_ids:
             if pid != keep_id:
                 dup = db.get(PlaceModel, pid)
                 if dup:
-                    dup.status = "merged"
-                    delete_place(workspace_id, dup.id)
-                    db.add(dup)
+                    permanently_remove_place(db, workspace_id, dup)
         keep = db.get(PlaceModel, keep_id)
         if keep:
             keep.verification = "Verified"
@@ -424,7 +526,7 @@ def list_agent_events(workspace_id: str, db: Session = Depends(get_db)):
     events = (
         db.query(AgentEventModel)
         .filter(AgentEventModel.workspace_id == workspace_id)
-        .order_by(AgentEventModel.created_at.asc())
+        .order_by(AgentEventModel.created_at.desc())
         .limit(50)
         .all()
     )

@@ -106,19 +106,17 @@ async def verify_places(
             )
             flagged += 1
         elif place.verification == "Needs Recheck":
-            verification, _, snippet = tavily_service.verify_place(place.title, place.city)
-            if verification == "Needs Recheck":
-                reviews.append(
-                    create_review_for_place(
-                        db,
-                        workspace_id,
-                        place,
-                        "Possible closed/outdated place",
-                        snippet or "Recommend manual recheck before adding to route.",
-                        "Confirm",
-                    )
+            reviews.append(
+                create_review_for_place(
+                    db,
+                    workspace_id,
+                    place,
+                    "Possible closed/outdated place",
+                    "Recommend manual recheck before adding to route.",
+                    "Confirm",
                 )
-                flagged += 1
+            )
+            flagged += 1
         elif not tavily_service.available and place.verification == "Unverified":
             reviews.append(
                 create_review_for_place(

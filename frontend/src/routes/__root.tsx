@@ -131,11 +131,11 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <AppProvider>
-        <div className="flex min-h-screen w-full overflow-hidden bg-background">
+        <div className="flex h-svh w-full overflow-hidden bg-background">
           <Sidebar />
-          <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <Topbar />
-            <main className="min-w-0 flex-1 overflow-y-auto">
+            <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
               <Outlet />
             </main>
           </div>

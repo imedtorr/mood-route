@@ -19,7 +19,7 @@ export const Route = createFileRoute("/route-planner")({
 });
 
 function RoutePlanner() {
-  const { aesthetic } = useApp();
+  const { aesthetic, workspace } = useApp();
   const { data: trip, isLoading, isError } = useLatestTrip();
   const [dayIdx, setDayIdx] = useState(0);
 
@@ -47,7 +47,7 @@ function RoutePlanner() {
     <div>
       <PageHeader
         eyebrow="Route Planner"
-        title={`${days.length} days in Tokyo`}
+        title={`${days.length} days in ${workspace.city}`}
         description={routeSummary}
       />
 

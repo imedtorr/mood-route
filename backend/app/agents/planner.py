@@ -1,4 +1,3 @@
-import uuid
 from collections import defaultdict
 
 from sqlalchemy.orm import Session
@@ -24,6 +23,16 @@ MOOD_BY_TAG = {
     "Creative": "Immersive Light",
     "Luxury": "Rooftop Pause",
 }
+
+DEFAULT_THEMES = [
+    "Slow Morning, Neon Evening",
+    "Forest & Sky",
+    "Shitamachi & Old Tokyo",
+    "Market Morning",
+    "Creative Districts",
+    "Hidden Corners",
+    "Coastal Calm",
+]
 
 
 def _pick_mood(place: PlaceModel, aesthetic_mode: bool) -> str | None:
@@ -57,16 +66,24 @@ def _score_place(place: PlaceModel, req: TripGenerateRequest) -> float:
     return score
 
 
+def _is_routable_place(place: PlaceModel) -> bool:
+    return place.confidence >= 0.5 and place.verification != "Needs Recheck"
+
+
 async def generate_itinerary(
     db: Session,
     workspace_id: str,
     places: list[PlaceModel],
     req: TripGenerateRequest,
 ) -> tuple[list[ItineraryDay], SourcesSummary, str]:
-    intensity_cap = {"Relaxed": 3, "Balanced": 4, "Packed": 5}[req.intensity]
-    stops_per_day = min(intensity_cap, max(2, len(places) // req.days))
+    routable = [place for place in places if _is_routable_place(place)]
+    if not routable:
+        routable = places
 
-    scored = sorted(places, key=lambda p: _score_place(p, req), reverse=True)
+    intensity_cap = {"Relaxed": 3, "Balanced": 4, "Packed": 5}[req.intensity]
+    stops_per_day = min(intensity_cap, max(2, len(routable) // req.days))
+
+    scored = sorted(routable, key=lambda p: _score_place(p, req), reverse=True)
     rag_ids = {pid for pid, _ in search_places(workspace_id, " ".join(req.moods or ["aesthetic travel"]), n=8)}
     selected: list[PlaceModel] = []
     seen_titles: set[str] = set()
@@ -80,10 +97,10 @@ async def generate_itinerary(
         selected.append(p)
 
     if len(selected) < req.days * 2:
-        for p in places:
-            if p.id not in {x.id for x in selected} and p.title.lower() not in seen_titles:
-                selected.append(p)
-                seen_titles.add(p.title.lower())
+        for place in routable:
+            if place.id not in {item.id for item in selected} and place.title.lower() not in seen_titles:
+                selected.append(place)
+                seen_titles.add(place.title.lower())
             if len(selected) >= req.days * stops_per_day:
                 break
 
@@ -96,15 +113,7 @@ async def generate_itinerary(
     days: list[ItineraryDay] = []
     sources = SourcesSummary()
     district_idx = 0
-    themes = [
-        "Slow Morning, Neon Evening",
-        "Forest & Sky",
-        "Shitamachi & Old Tokyo",
-        "Market Morning",
-        "Creative Districts",
-        "Hidden Corners",
-        "Coastal Calm",
-    ]
+    day_stops_for_narrative: list[list[str]] = []
 
     for day_num in range(1, req.days + 1):
         day_places: list[PlaceModel] = []
@@ -165,7 +174,9 @@ async def generate_itinerary(
                 )
             )
 
-        theme = themes[(day_num - 1) % len(themes)]
+        day_stops_for_narrative.append([p.title for p in day_places])
+
+        theme = DEFAULT_THEMES[(day_num - 1) % len(DEFAULT_THEMES)]
         if req.aestheticMode and stops and stops[0].mood:
             theme = f"{stops[0].mood} & {stops[-1].mood or 'Evening'}"
 
@@ -176,6 +187,22 @@ async def generate_itinerary(
         if req.aestheticMode
         else "Optimized for walkable clusters and verified locations."
     )
+
+    if gigachat_service.available:
+        narrative = await gigachat_service.generate_route_narrative_async(
+            req.city,
+            req.days,
+            day_stops_for_narrative,
+            req.aestheticMode,
+        )
+        day_themes = narrative.get("dayThemes")
+        if isinstance(day_themes, list) and len(day_themes) >= req.days:
+            for i, day in enumerate(days):
+                if isinstance(day_themes[i], str) and day_themes[i].strip():
+                    days[i] = ItineraryDay(day=day.day, theme=day_themes[i].strip(), stops=day.stops)
+        route_summary = narrative.get("routeSummary")
+        if isinstance(route_summary, str) and route_summary.strip():
+            summary = route_summary.strip()
 
     log_agent_event(
         db,
@@ -188,10 +215,5 @@ async def generate_itinerary(
         input_preview=f"{len(selected)} candidates",
         output_preview=f"{req.days} days × ~{stops_per_day} stops",
     )
-
-    if gigachat_service.available:
-        gigachat_service.chat(
-            f"Summarize this {req.days}-day {req.city} trip theme in one poetic sentence.",
-        )
 
     return days, sources, summary

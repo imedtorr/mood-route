@@ -1,4 +1,4 @@
-export type SourceType = "Pinterest" | "Instagram" | "Screenshot" | "Article";
+export type SourceType = "Screenshot" | "Article" | "Text";
 export type Verification = "Verified" | "Unverified" | "Needs Recheck";
 export type Category =
   | "Cafe"
@@ -69,7 +69,8 @@ export type UploadStatus =
   | "Classifying categories"
   | "Awaiting review"
   | "Completed"
-  | "Fallback / Needs manual review";
+  | "Fallback / Needs manual review"
+  | "Cancelled";
 
 export type Upload = {
   id: string;
@@ -80,6 +81,7 @@ export type Upload = {
   progress: number;
   image: string;
   note?: string;
+  placeIds?: string[];
 };
 
 export type AgentName =

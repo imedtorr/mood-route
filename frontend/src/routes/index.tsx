@@ -1,14 +1,22 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useRef, useState } from "react";
-import { Link2, UploadCloud, Plus, Info } from "lucide-react";
+import { Link2, UploadCloud, Plus, Info, MapPin } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
 import { UploadCard } from "@/components/upload-card";
-import { useAddFileUpload, useAddUrlUpload, useUploads } from "@/lib/api/hooks";
+import { useAddFileUpload, useAddTextUpload, useAddUrlUpload, useUploads } from "@/lib/api/hooks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+
+const BLOCKED_URL_HOSTS = ["instagram.com", "pinterest.com", "pin.it"];
+
+function isBlockedSocialUrl(url: string): boolean {
+  const lower = url.toLowerCase();
+  return BLOCKED_URL_HOSTS.some((host) => lower.includes(host));
+}
 
 export const Route = createFileRoute("/")({
   head: () => ({ meta: [{ title: "Inbox — MoodRoute" }] }),
@@ -19,20 +27,38 @@ function InboxPage() {
   const { data: uploads = [], isLoading } = useUploads();
   const addUrl = useAddUrlUpload();
   const addFile = useAddFileUpload();
+  const addText = useAddTextUpload();
   const [url, setUrl] = useState("");
+  const [placeQuery, setPlaceQuery] = useState("");
   const [note, setNote] = useState("");
   const [dragging, setDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  async function addInspiration() {
+  async function addArticle() {
     if (!url.trim()) return;
+    if (isBlockedSocialUrl(url)) {
+      toast.error("Only article links are supported. For social media posts, upload a screenshot instead.");
+      return;
+    }
     try {
       await addUrl.mutateAsync({ url: url.trim(), note: note.trim() });
-      toast.success("Inspiration added — processing in background");
+      toast.success("Article added — processing in the background");
       setUrl("");
       setNote("");
     } catch {
-      toast.error("Failed to add URL");
+      toast.error("Could not add link");
+    }
+  }
+
+  async function addPlace() {
+    if (!placeQuery.trim()) return;
+    try {
+      await addText.mutateAsync({ query: placeQuery.trim(), note: note.trim() });
+      toast.success("Place added — agents are gathering details");
+      setPlaceQuery("");
+      setNote("");
+    } catch {
+      toast.error("Could not add place");
     }
   }
 
@@ -43,7 +69,7 @@ function InboxPage() {
       toast.success("Screenshot uploaded — agents are processing");
       setNote("");
     } catch {
-      toast.error("Failed to upload screenshot");
+      toast.error("Could not upload screenshot");
     }
   }
 
@@ -52,37 +78,71 @@ function InboxPage() {
       <PageHeader
         eyebrow="Inbox"
         title="Inspiration Inbox"
-        description="Drop links and screenshots from Pinterest, Instagram, or articles. MoodRoute parses them into structured places in the background."
+        description="Upload a screenshot, paste an article link, or enter a place name — MoodRoute will save it in the Places tab."
       />
 
       <div className="mx-auto max-w-5xl px-4 py-6 md:px-8">
-        <div className="grid gap-4 lg:grid-cols-5">
+        <Tabs defaultValue="photo" className="grid gap-4 lg:grid-cols-5">
           <div className="rounded-2xl border border-border bg-card p-5 lg:col-span-3">
-            <label className="text-sm font-medium text-foreground">Add inspiration</label>
-            <div className="mt-2 flex gap-2">
-              <div className="relative flex-1">
-                <Link2 className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && addInspiration()}
-                  placeholder="Paste a Pinterest, Instagram, or article link…"
-                  className="h-11 pl-9"
-                />
+            <TabsList className="mb-4 grid w-full grid-cols-3">
+              <TabsTrigger value="photo">Photo</TabsTrigger>
+              <TabsTrigger value="article">Article</TabsTrigger>
+              <TabsTrigger value="place">Place</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="article" className="mt-0">
+              <label className="text-sm font-medium text-foreground">Article link</label>
+              <div className="mt-2 flex gap-2">
+                <div className="relative flex-1">
+                  <Link2 className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && addArticle()}
+                    placeholder="https://en.wikipedia.org/wiki/Yanaka,_Tokyo"
+                    className="h-11 pl-9"
+                  />
+                </div>
+                <Button onClick={addArticle} className="h-11 gap-1.5" disabled={addUrl.isPending}>
+                  <Plus className="size-4" />
+                  Add
+                </Button>
               </div>
-              <Button onClick={addInspiration} className="h-11 gap-1.5" disabled={addUrl.isPending}>
-                <Plus className="size-4" />
-                Add
-              </Button>
-            </div>
+            </TabsContent>
+
+            <TabsContent value="place" className="mt-0">
+              <label className="text-sm font-medium text-foreground">Place name</label>
+              <div className="mt-2 flex gap-2">
+                <div className="relative flex-1">
+                  <MapPin className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={placeQuery}
+                    onChange={(e) => setPlaceQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && addPlace()}
+                    placeholder="Fuglen Tokyo, Blue Bottle Aoyama…"
+                    className="h-11 pl-9"
+                  />
+                </div>
+                <Button onClick={addPlace} className="h-11 gap-1.5" disabled={addText.isPending}>
+                  <Plus className="size-4" />
+                  Add
+                </Button>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="photo" className="mt-0">
+              <p className="text-sm text-muted-foreground">
+                Drag a screenshot to the area on the right, or click it.
+              </p>
+            </TabsContent>
 
             <label className="mt-4 block text-sm font-medium text-foreground">
-              Why I saved this <span className="font-normal text-muted-foreground">(optional)</span>
+              Note <span className="font-normal text-muted-foreground">(optional)</span>
             </label>
             <Textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="A quick note helps the AI understand your taste…"
+              placeholder="A short note helps the AI understand your taste…"
               className="mt-2 min-h-20 resize-none"
             />
           </div>
@@ -118,17 +178,17 @@ function InboxPage() {
               <span className="flex size-12 items-center justify-center rounded-full bg-accent text-accent-foreground">
                 <UploadCloud className="size-6" />
               </span>
-              <p className="mt-3 text-sm font-medium text-foreground">Drop screenshots here</p>
+              <p className="mt-3 text-sm font-medium text-foreground">Drag a screenshot here</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                or click to browse — PNG, JPG up to 10MB
+                or click — PNG, JPG up to 10MB
               </p>
             </div>
           </div>
-        </div>
+        </Tabs>
 
         <div className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground">
           <Info className="size-3.5" />
-          Uploads are automatically processed in the background.
+          Uploads are processed automatically in the background.
         </div>
 
         <div className="mt-8">

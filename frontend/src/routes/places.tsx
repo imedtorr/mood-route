@@ -29,6 +29,9 @@ import {
 } from "@/components/ui/alert-dialog";
 
 export const Route = createFileRoute("/places")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    placeId: typeof search.placeId === "string" ? search.placeId : undefined,
+  }),
   head: () => ({ meta: [{ title: "Places — MoodRoute" }] }),
   component: PlacesPage,
 });
@@ -75,6 +78,8 @@ const placeCategories: Category[] = [
 
 function PlacesPage() {
   const { workspace } = useApp();
+  const { placeId } = Route.useSearch();
+  const navigate = Route.useNavigate();
   const [city, setCity] = useState("All");
   const [cat, setCat] = useState("All");
   const [tag, setTag] = useState("All");
@@ -82,6 +87,19 @@ function PlacesPage() {
   const [active, setActive] = useState<Place | null>(null);
 
   const { data: allPlaces = [] } = usePlaces();
+
+  useEffect(() => {
+    if (!placeId || !allPlaces.length) return;
+    const place = allPlaces.find((p) => p.id === placeId);
+    if (!place) return;
+    setActive(place);
+    requestAnimationFrame(() => {
+      document.getElementById(`place-${placeId}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    });
+  }, [placeId, allPlaces]);
 
   const cities = useMemo(() => {
     const options = new Set<string>(["All"]);
@@ -126,7 +144,9 @@ function PlacesPage() {
       <div className="px-8 py-6">
         <div className="masonry">
           {filtered.map((p) => (
-            <PlaceCard key={p.id} place={p} onClick={() => setActive(p)} />
+            <div key={p.id} id={`place-${p.id}`}>
+              <PlaceCard place={p} onClick={() => setActive(p)} />
+            </div>
           ))}
         </div>
       </div>
@@ -134,7 +154,10 @@ function PlacesPage() {
       {active && (
         <PlaceDrawer
           place={active}
-          onClose={() => setActive(null)}
+          onClose={() => {
+            setActive(null);
+            if (placeId) navigate({ search: {} });
+          }}
           onChange={setActive}
         />
       )}

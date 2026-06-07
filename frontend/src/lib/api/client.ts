@@ -140,7 +140,7 @@ export const api = {
       return Promise.resolve({
         id: `u${Date.now()}`,
         title: url.slice(0, 40),
-        source: url.includes("pin") ? "Pinterest" : "Article",
+        source: "Article" as const,
         time: "just now",
         progress: 8,
         status: "Parsing link" as const,
@@ -154,6 +154,25 @@ export const api = {
     });
   },
 
+  addText: (workspaceId: string, query: string, note: string) => {
+    if (USE_MOCK) {
+      return Promise.resolve({
+        id: `u${Date.now()}`,
+        title: query.slice(0, 40),
+        source: "Text" as const,
+        time: "just now",
+        progress: 8,
+        status: "Extracting places" as const,
+        image: uploads[0].image,
+        note,
+      });
+    }
+    return request<Upload>(`/api/workspaces/${workspaceId}/uploads/text`, {
+      method: "POST",
+      body: JSON.stringify({ query, note }),
+    });
+  },
+
   addFile: (workspaceId: string, file: File, note: string) => {
     const form = new FormData();
     form.append("file", file);
@@ -161,6 +180,30 @@ export const api = {
     return request<Upload>(`/api/workspaces/${workspaceId}/uploads/file`, {
       method: "POST",
       body: form,
+    });
+  },
+
+  cancelUpload: (workspaceId: string, uploadId: string) => {
+    if (USE_MOCK) {
+      const idx = uploads.findIndex((u) => u.id === uploadId);
+      if (idx === -1) throw new ApiError(404, "Upload not found");
+      uploads[idx] = { ...uploads[idx], status: "Cancelled", progress: 100 };
+      return Promise.resolve(uploads[idx]);
+    }
+    return request<Upload>(`/api/workspaces/${workspaceId}/uploads/${uploadId}/cancel`, {
+      method: "POST",
+    });
+  },
+
+  deleteUpload: (workspaceId: string, uploadId: string) => {
+    if (USE_MOCK) {
+      const idx = uploads.findIndex((u) => u.id === uploadId);
+      if (idx === -1) throw new ApiError(404, "Upload not found");
+      uploads.splice(idx, 1);
+      return Promise.resolve({ ok: true });
+    }
+    return request<{ ok: boolean }>(`/api/workspaces/${workspaceId}/uploads/${uploadId}`, {
+      method: "DELETE",
     });
   },
 

@@ -8,6 +8,13 @@ const TERMINAL_UPLOAD_STATUSES = [
   "Completed",
   "Fallback / Needs manual review",
   "Awaiting review",
+  "Cancelled",
+] as const;
+
+export const PROCESSED_UPLOAD_STATUSES = [
+  "Completed",
+  "Fallback / Needs manual review",
+  "Awaiting review",
 ] as const;
 
 export function useWorkspaces() {
@@ -118,6 +125,7 @@ export function useAddUrlUpload() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["uploads", workspace.id] });
       qc.invalidateQueries({ queryKey: ["agentEvents", workspace.id] });
+      qc.invalidateQueries({ queryKey: ["places", workspace.id] });
     },
   });
 }
@@ -131,7 +139,43 @@ export function useAddFileUpload() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["uploads", workspace.id] });
       qc.invalidateQueries({ queryKey: ["agentEvents", workspace.id] });
+      qc.invalidateQueries({ queryKey: ["places", workspace.id] });
     },
+  });
+}
+
+export function useAddTextUpload() {
+  const qc = useQueryClient();
+  const { workspace } = useApp();
+  return useMutation({
+    mutationFn: ({ query, note }: { query: string; note: string }) =>
+      api.addText(workspace.id, query, note),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["uploads", workspace.id] });
+      qc.invalidateQueries({ queryKey: ["agentEvents", workspace.id] });
+      qc.invalidateQueries({ queryKey: ["places", workspace.id] });
+    },
+  });
+}
+
+export function useCancelUpload() {
+  const qc = useQueryClient();
+  const { workspace } = useApp();
+  return useMutation({
+    mutationFn: (uploadId: string) => api.cancelUpload(workspace.id, uploadId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["uploads", workspace.id] });
+      qc.invalidateQueries({ queryKey: ["agentEvents", workspace.id] });
+    },
+  });
+}
+
+export function useDeleteUpload() {
+  const qc = useQueryClient();
+  const { workspace } = useApp();
+  return useMutation({
+    mutationFn: (uploadId: string) => api.deleteUpload(workspace.id, uploadId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["uploads", workspace.id] }),
   });
 }
 
@@ -185,7 +229,11 @@ export function useDeletePlace() {
   const { workspace } = useApp();
   return useMutation({
     mutationFn: (placeId: string) => api.deletePlace(workspace.id, placeId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["places", workspace.id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["places", workspace.id] });
+      qc.invalidateQueries({ queryKey: ["placeSearch", workspace.id] });
+      qc.invalidateQueries({ queryKey: ["reviews", workspace.id] });
+    },
   });
 }
 

@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
+import sys
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,8 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api.routes import router
 from app.config import settings
 from app.db.database import SessionLocal, init_db
-import sys
-from pathlib import Path
+from app.services.ollama import close_ollama_client, init_ollama_client
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -21,6 +21,7 @@ async def lifespan(app: FastAPI):
     Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)
     Path(settings.chroma_path).mkdir(parents=True, exist_ok=True)
     Path("data").mkdir(parents=True, exist_ok=True)
+    await init_ollama_client()
     init_db()
     db = SessionLocal()
     try:
@@ -28,6 +29,7 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
     yield
+    await close_ollama_client()
 
 
 app = FastAPI(title="MoodRoute API", lifespan=lifespan)

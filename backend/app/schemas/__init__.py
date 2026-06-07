@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-SourceType = Literal["Pinterest", "Instagram", "Screenshot", "Article"]
+SourceType = Literal["Screenshot", "Article", "Text"]
 Verification = Literal["Verified", "Unverified", "Needs Recheck"]
 Category = Literal[
     "Cafe", "Restaurant", "Museum", "Park", "Hotel",
@@ -13,6 +13,7 @@ UploadStatus = Literal[
     "Parsing link", "OCR processing", "Extracting places",
     "Enriching details", "Classifying categories",
     "Awaiting review", "Completed", "Fallback / Needs manual review",
+    "Cancelled",
 ]
 AgentName = Literal[
     "Supervisor Agent", "Curator Agent", "Researcher Agent",
@@ -67,6 +68,7 @@ class Upload(BaseModel):
     progress: int
     image: str
     note: str = ""
+    placeIds: list[str] = []
 
 
 class AgentTimelineEntry(BaseModel):
@@ -155,6 +157,11 @@ class PreferencesUpdate(BaseModel):
 
 class UrlUploadRequest(BaseModel):
     url: str
+    note: str = ""
+
+
+class TextUploadRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=256)
     note: str = ""
 
 

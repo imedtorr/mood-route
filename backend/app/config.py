@@ -9,10 +9,11 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=BASE_DIR / ".env", extra="ignore")
 
     gigachat_credentials: str = ""
-    gigachat_vision_model: str = "GigaChat-2-Pro"
     tavily_api_key: str = ""
     ollama_base_url: str = "http://localhost:11434"
-    ollama_vision_model: str = "moondream"
+    ollama_vision_model: str = "llava:7b"
+    ollama_vision_fallback_models: str = "llava:7b,moondream:latest"
+    ollama_text_model: str = "qwen2.5:7b"
     database_url: str = f"sqlite:///{BASE_DIR / 'data' / 'moodroute.db'}"
     chroma_path: str = str(BASE_DIR / "data" / "chroma")
     upload_dir: str = str(BASE_DIR / "uploads")

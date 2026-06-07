@@ -78,7 +78,7 @@ def place_to_schema(p: PlaceModel) -> Place:
     )
 
 
-def upload_to_schema(u: UploadModel) -> Upload:
+def upload_to_schema(u: UploadModel, place_ids: list[str] | None = None) -> Upload:
     return Upload(
         id=u.id,
         title=u.title,
@@ -88,6 +88,7 @@ def upload_to_schema(u: UploadModel) -> Upload:
         progress=u.progress,
         image=u.image,
         note=u.note or "",
+        placeIds=place_ids or [],
     )
 
 

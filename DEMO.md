@@ -4,14 +4,15 @@
 
 - Backend on `:8000`, frontend on `:5173`
 - Workspace: **Japan Autumn** (seeded with 12 Tokyo places)
+- Ollama running with `llama3.2-vision:11b` and `qwen2.5:7b` (or fallback models)
 
 ## Flow (5–7 minutes)
 
 ### 1. Inspiration Inbox
 
-- Paste URL: `https://en.wikipedia.org/wiki/Yanaka,_Tokyo`
-- Note: "hidden neighborhood walk"
-- Upload a café screenshot (drag-drop)
+- **Article tab:** paste `https://en.wikipedia.org/wiki/Yanaka,_Tokyo`, note: "hidden neighborhood walk"
+- **Photo tab:** upload a café screenshot (drag-drop)
+- **Place tab:** type `Fuglen Tokyo` and add
 - Show **Agent Activity**: Supervisor → Curator → Researcher
 
 ### 2. Review Queue (HITL)
@@ -35,13 +36,14 @@
 
 ### 5. Route Planner
 
-- Day tabs with themes (Slow Morning, Neon Evening…)
+- Day tabs with GigaChat-generated themes
 - **Leaflet map** with numbered pins + route line
 - **Sources used**: saved / RAG / verified / review counts
 - Each stop: reason + verification badge + mood label
 
 ## Fallback demo (no API keys)
 
-- Without GigaChat/Tavily: heuristic extraction + Unverified flags still work
-- Without Ollama: screenshot → Review Queue with low confidence
+- Without GigaChat: heuristic place cards and default route themes still work
+- Without Tavily: place lookup and verification fall back to Unverified
+- Without Ollama: screenshot/article → Review Queue with low confidence
 - Agent Activity shows **Fallback** status explicitly
