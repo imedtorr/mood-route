@@ -1,0 +1,197 @@
+import uuid
+from collections import defaultdict
+
+from sqlalchemy.orm import Session
+
+from app.db.models import PlaceModel
+from app.rag.store import search_places
+from app.schemas import ItineraryDay, ItineraryStop, SourcesSummary, TripGenerateRequest
+from app.services.agent_log import log_agent_event
+from app.services.gigachat import gigachat_service
+from app.services.routing import estimate_walk_minutes
+
+DEFAULT_TIMES = ["08:30", "11:00", "14:00", "17:30", "20:00"]
+MOOD_BY_TAG = {
+    "Minimal": "Slow Morning Coffee",
+    "Neon": "Neon Evening",
+    "Coffee Culture": "Coffee Crawl",
+    "Architecture": "Architecture Walk",
+    "Hidden Gem": "Hidden Courtyard",
+    "Slow Travel": "Golden Hour Walk",
+    "Photography": "Sunset View",
+    "Vintage": "Old Tokyo Stroll",
+    "Cozy": "Botanical Lunch",
+    "Creative": "Immersive Light",
+    "Luxury": "Rooftop Pause",
+}
+
+
+def _pick_mood(place: PlaceModel, aesthetic_mode: bool) -> str | None:
+    if not aesthetic_mode:
+        return None
+    for tag in place.tags:
+        if tag in MOOD_BY_TAG:
+            return MOOD_BY_TAG[tag]
+    return "Curated Stop"
+
+
+def _score_place(place: PlaceModel, req: TripGenerateRequest) -> float:
+    score = place.confidence
+    if place.verification == "Verified":
+        score += 0.15
+    if place.verification == "Needs Recheck":
+        score -= 0.1
+    for mood in req.moods:
+        if mood in place.tags:
+            score += 0.12
+    style_map = {
+        "Coffee Crawl": ["Cafe"],
+        "Architecture Focus": ["Museum", "Park", "Shopping", "Landmark"],
+        "Hidden Gems": ["Neighborhood", "Market", "Viewpoint"],
+        "Aesthetic": ["Cafe", "Park", "Viewpoint", "Museum"],
+        "Efficient": ["Landmark", "Viewpoint", "Shopping"],
+    }
+    preferred = style_map.get(req.style, [])
+    if place.category in preferred:
+        score += 0.1
+    return score
+
+
+async def generate_itinerary(
+    db: Session,
+    workspace_id: str,
+    places: list[PlaceModel],
+    req: TripGenerateRequest,
+) -> tuple[list[ItineraryDay], SourcesSummary, str]:
+    intensity_cap = {"Relaxed": 3, "Balanced": 4, "Packed": 5}[req.intensity]
+    stops_per_day = min(intensity_cap, max(2, len(places) // req.days))
+
+    scored = sorted(places, key=lambda p: _score_place(p, req), reverse=True)
+    rag_ids = {pid for pid, _ in search_places(workspace_id, " ".join(req.moods or ["aesthetic travel"]), n=8)}
+    selected: list[PlaceModel] = []
+    seen_titles: set[str] = set()
+    for p in scored:
+        if len(selected) >= req.days * stops_per_day:
+            break
+        key = p.title.lower()
+        if key in seen_titles:
+            continue
+        seen_titles.add(key)
+        selected.append(p)
+
+    if len(selected) < req.days * 2:
+        for p in places:
+            if p.id not in {x.id for x in selected} and p.title.lower() not in seen_titles:
+                selected.append(p)
+                seen_titles.add(p.title.lower())
+            if len(selected) >= req.days * stops_per_day:
+                break
+
+    by_district: dict[str, list[PlaceModel]] = defaultdict(list)
+    for p in selected:
+        district = p.district or p.city
+        by_district[district].append(p)
+
+    districts = sorted(by_district.keys(), key=lambda d: len(by_district[d]), reverse=True)
+    days: list[ItineraryDay] = []
+    sources = SourcesSummary()
+    district_idx = 0
+    themes = [
+        "Slow Morning, Neon Evening",
+        "Forest & Sky",
+        "Shitamachi & Old Tokyo",
+        "Market Morning",
+        "Creative Districts",
+        "Hidden Corners",
+        "Coastal Calm",
+    ]
+
+    for day_num in range(1, req.days + 1):
+        day_places: list[PlaceModel] = []
+        while len(day_places) < stops_per_day and district_idx < len(districts):
+            d = districts[district_idx]
+            remaining = [p for p in by_district[d] if p not in day_places]
+            if remaining:
+                day_places.extend(remaining[: stops_per_day - len(day_places)])
+            if len(day_places) >= stops_per_day or not remaining:
+                district_idx += 1
+            if district_idx >= len(districts):
+                break
+
+        if not day_places:
+            day_places = selected[(day_num - 1) * stops_per_day : day_num * stops_per_day]
+
+        stops: list[ItineraryStop] = []
+        for i, place in enumerate(day_places):
+            source = "Saved"
+            if place.id in rag_ids:
+                source = "RAG Similar"
+                sources.rag += 1
+            elif place.verification == "Verified" and place.confidence > 0.9:
+                source = "Verified Recommendation"
+                sources.verified += 1
+            else:
+                sources.saved += 1
+            if place.verification == "Needs Recheck":
+                sources.review += 1
+
+            travel_note = f"Explore {place.district or place.city}"
+            if i > 0 and place.lat and day_places[i - 1].lat and place.lng and day_places[i - 1].lng:
+                mins = await estimate_walk_minutes(
+                    day_places[i - 1].lat, day_places[i - 1].lng, place.lat, place.lng
+                )
+                if mins and mins <= 45:
+                    travel_note = f"{mins} min walk from previous stop"
+                elif mins:
+                    travel_note = f"~{mins} min transit"
+
+            stops.append(
+                ItineraryStop(
+                    n=i + 1,
+                    time=DEFAULT_TIMES[i] if i < len(DEFAULT_TIMES) else "12:00",
+                    title=place.title,
+                    category=place.category,
+                    district=place.district or place.city,
+                    travelNote=travel_note,
+                    aestheticNote=place.aesthetic_note,
+                    reason=place.reason or f"Matches your {req.style} preferences.",
+                    source=source,
+                    verification=place.verification,
+                    mood=_pick_mood(place, req.aestheticMode),
+                    image=place.image,
+                    lat=place.lat,
+                    lng=place.lng,
+                    placeId=place.id,
+                )
+            )
+
+        theme = themes[(day_num - 1) % len(themes)]
+        if req.aestheticMode and stops and stops[0].mood:
+            theme = f"{stops[0].mood} & {stops[-1].mood or 'Evening'}"
+
+        days.append(ItineraryDay(day=day_num, theme=theme, stops=stops))
+
+    summary = (
+        "Grouped by neighborhood to reduce travel time and preserve aesthetic flow."
+        if req.aestheticMode
+        else "Optimized for walkable clusters and verified locations."
+    )
+
+    log_agent_event(
+        db,
+        workspace_id,
+        "Planner Agent",
+        "Success",
+        f"Generated {req.days}-day route grouped by neighborhood.",
+        confidence=0.93,
+        tools=["cluster_geo", "rag_search", "score_route"],
+        input_preview=f"{len(selected)} candidates",
+        output_preview=f"{req.days} days × ~{stops_per_day} stops",
+    )
+
+    if gigachat_service.available:
+        gigachat_service.chat(
+            f"Summarize this {req.days}-day {req.city} trip theme in one poetic sentence.",
+        )
+
+    return days, sources, summary
