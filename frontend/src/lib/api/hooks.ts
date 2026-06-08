@@ -29,6 +29,14 @@ export function useCreateWorkspace() {
   });
 }
 
+export function useDeleteWorkspace() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (workspaceId: string) => api.deleteWorkspace(workspaceId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["workspaces"] }),
+  });
+}
+
 export function usePlaces(filters?: { city?: string; category?: string; verification?: string }) {
   const { workspace } = useApp();
   return useQuery({
@@ -39,6 +47,7 @@ export function usePlaces(filters?: { city?: string; category?: string; verifica
         category: filters?.category || "",
         verification: filters?.verification || "",
       }),
+    enabled: Boolean(workspace.id),
   });
 }
 
@@ -47,7 +56,7 @@ export function usePlaceSearch(query: string) {
   return useQuery({
     queryKey: ["placeSearch", workspace.id, query],
     queryFn: () => api.searchPlaces(workspace.id, query),
-    enabled: query.trim().length >= 2,
+    enabled: Boolean(workspace.id) && query.trim().length >= 2,
   });
 }
 
@@ -56,6 +65,7 @@ export function useUploads() {
   return useQuery({
     queryKey: ["uploads", workspace.id],
     queryFn: () => api.uploads(workspace.id),
+    enabled: Boolean(workspace.id),
     refetchInterval: (q) => {
       const data = q.state.data;
       if (!data) return false;
@@ -87,6 +97,7 @@ export function useReviewQueue() {
   return useQuery({
     queryKey: ["reviews", workspace.id],
     queryFn: () => api.reviews(workspace.id),
+    enabled: Boolean(workspace.id),
   });
 }
 
@@ -95,6 +106,7 @@ export function usePreferences() {
   return useQuery({
     queryKey: ["preferences", workspace.id],
     queryFn: () => api.preferences(workspace.id),
+    enabled: Boolean(workspace.id),
   });
 }
 
@@ -103,6 +115,7 @@ export function useAgentEvents() {
   return useQuery({
     queryKey: ["agentEvents", workspace.id],
     queryFn: () => api.agentEvents(workspace.id),
+    enabled: Boolean(workspace.id),
     refetchInterval: 3000,
   });
 }
@@ -112,6 +125,7 @@ export function useLatestTrip() {
   return useQuery({
     queryKey: ["trip", workspace.id],
     queryFn: () => api.latestTrip(workspace.id),
+    enabled: Boolean(workspace.id),
     retry: false,
   });
 }
@@ -220,6 +234,15 @@ export function useUpdatePlace() {
   return useMutation({
     mutationFn: ({ placeId, body }: { placeId: string; body: PlaceUpdate }) =>
       api.updatePlace(workspace.id, placeId, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["places", workspace.id] }),
+  });
+}
+
+export function useGeocodePlace() {
+  const qc = useQueryClient();
+  const { workspace } = useApp();
+  return useMutation({
+    mutationFn: (placeId: string) => api.geocodePlace(workspace.id, placeId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["places", workspace.id] }),
   });
 }

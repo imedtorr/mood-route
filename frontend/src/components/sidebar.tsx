@@ -10,15 +10,30 @@ import {
   Compass,
   PanelRightOpen,
   Check,
+  Trash2,
 } from "lucide-react";
 import { useState } from "react";
-import { useApp } from "@/lib/app-context";
-import { useWorkspaces } from "@/lib/api/hooks";
+import { toast } from "sonner";
+import { useApp, latestWorkspace } from "@/lib/app-context";
+import { useDeleteWorkspace, useWorkspaces } from "@/lib/api/hooks";
 import { workspaces as fallbackWorkspaces } from "@/lib/mock-data";
+import type { Workspace } from "@/lib/types";
 import { groupWorkspacesByCountry } from "@/lib/workspaces";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { NewWorkspaceDialog } from "@/components/new-workspace-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
+const USE_MOCK = import.meta.env.VITE_USE_MOCK === "true";
 
 const nav = [
   { to: "/", label: "Inbox", icon: Inbox },
@@ -30,12 +45,34 @@ const nav = [
 
 export function Sidebar() {
   const path = useRouterState({ select: (s) => s.location.pathname });
-  const { workspace, setWorkspace, agentOpen, setAgentOpen } = useApp();
+  const { workspace, setWorkspace, clearWorkspaceSelection, agentOpen, setAgentOpen } = useApp();
   const { data: wsList } = useWorkspaces();
-  const workspaces = wsList?.length ? wsList : fallbackWorkspaces;
+  const deleteWorkspace = useDeleteWorkspace();
+  const workspaces = wsList?.length ? wsList : USE_MOCK ? fallbackWorkspaces : [];
   const groups = groupWorkspacesByCountry(workspaces);
   const [open, setOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<Workspace | null>(null);
+
+  async function handleDelete() {
+    if (!pendingDelete) return;
+    const deletedId = pendingDelete.id;
+    try {
+      await deleteWorkspace.mutateAsync(deletedId);
+      const remaining = workspaces.filter((w) => w.id !== deletedId);
+      if (deletedId === workspace.id) {
+        if (remaining.length) {
+          setWorkspace(latestWorkspace(remaining));
+        } else {
+          clearWorkspaceSelection();
+        }
+      }
+      toast.success(`Trip to ${pendingDelete.city} removed`);
+      setPendingDelete(null);
+    } catch {
+      toast.error("Could not delete trip");
+    }
+  }
 
   return (
     <>
@@ -68,6 +105,9 @@ export function Sidebar() {
           </button>
           {open && (
             <div className="absolute left-3 right-3 z-20 mt-1 max-h-80 overflow-y-auto rounded-xl border border-border bg-popover shadow-lg">
+              {groups.length === 0 && (
+                <p className="px-3 py-2 text-sm text-muted-foreground">No trips yet</p>
+              )}
               {groups.map((group) => (
                 <div key={group.country}>
                   <div className="flex items-center gap-2 bg-muted/40 px-3 py-1.5 text-xs font-medium text-muted-foreground">
@@ -75,21 +115,40 @@ export function Sidebar() {
                     <span>{group.country}</span>
                   </div>
                   {group.workspaces.map((w) => (
-                    <button
+                    <div
                       key={w.id}
-                      type="button"
-                      onClick={() => {
-                        setWorkspace(w);
-                        setOpen(false);
-                      }}
-                      className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted"
+                      className="group flex w-full items-center hover:bg-muted"
                     >
-                      <span className="min-w-0 flex-1 text-left">
-                        <span className="block truncate font-medium">{w.city}</span>
-                        <span className="block truncate text-xs text-muted-foreground">{w.name}</span>
-                      </span>
-                      {w.id === workspace.id && <Check className="size-4 shrink-0 text-primary" />}
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setWorkspace(w);
+                          setOpen(false);
+                        }}
+                        className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-sm"
+                      >
+                        <span className="min-w-0 flex-1 text-left">
+                          <span className="block truncate font-medium">{w.city}</span>
+                          <span className="block truncate text-xs text-muted-foreground">{w.name}</span>
+                        </span>
+                        {w.id === workspace.id && (
+                          <Check className="size-4 shrink-0 text-primary" />
+                        )}
+                      </button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="mr-1 size-7 shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+                        title="Delete trip"
+                        disabled={deleteWorkspace.isPending}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPendingDelete(w);
+                        }}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </div>
                   ))}
                 </div>
               ))}
@@ -141,6 +200,32 @@ export function Sidebar() {
       </aside>
 
       <NewWorkspaceDialog open={createOpen} onOpenChange={setCreateOpen} />
+
+      <AlertDialog open={!!pendingDelete} onOpenChange={(v) => !v && setPendingDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this trip?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDelete && (
+                <>
+                  Remove <strong>{pendingDelete.city}</strong> ({pendingDelete.name})? All places,
+                  uploads, and routes will be permanently deleted.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleDelete}
+              disabled={deleteWorkspace.isPending}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

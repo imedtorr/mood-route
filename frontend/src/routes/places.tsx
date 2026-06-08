@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
 import { PlaceCard } from "@/components/place-card";
-import { useDeletePlace, usePlaces, useUpdatePlace } from "@/lib/api/hooks";
+import { useDeletePlace, useGeocodePlace, usePlaces, useUpdatePlace } from "@/lib/api/hooks";
 import { resolveImageUrl } from "@/lib/api/client";
 import { useApp } from "@/lib/app-context";
 import type { Category, Place } from "@/lib/types";
@@ -13,7 +13,17 @@ import {
   ConfidenceBadge,
   CategoryBadge,
 } from "@/components/badges";
-import { Pencil, Trash2, X, MapPin } from "lucide-react";
+import {
+  AlertTriangle,
+  ExternalLink,
+  Loader2,
+  MapPinned,
+  Pencil,
+  Search,
+  Trash2,
+  X,
+  MapPin,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -60,6 +70,10 @@ const tags = [
   "Neon",
 ];
 const verifs = ["All", "Verified", "Unverified", "Needs Recheck"];
+
+function hasMapCoordinates(place: Place): boolean {
+  return place.lat != null && place.lng != null;
+}
 
 const placeCategories: Category[] = [
   "Cafe",
@@ -142,7 +156,7 @@ function PlacesPage() {
       </div>
 
       <div className="px-8 py-6">
-        <div className="masonry">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filtered.map((p) => (
             <div key={p.id} id={`place-${p.id}`}>
               <PlaceCard place={p} onClick={() => setActive(p)} />
@@ -205,11 +219,13 @@ function PlaceDrawer({
 }) {
   const updatePlace = useUpdatePlace();
   const deletePlace = useDeletePlace();
+  const geocodePlace = useGeocodePlace();
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [title, setTitle] = useState(place.title);
   const [city, setCity] = useState(place.city);
   const [country, setCountry] = useState(place.country);
+  const [address, setAddress] = useState(place.address ?? "");
   const [category, setCategory] = useState<Category>(place.category);
   const [description, setDescription] = useState(place.description);
   const [aestheticNote, setAestheticNote] = useState(place.aestheticNote);
@@ -220,6 +236,7 @@ function PlaceDrawer({
     setTitle(place.title);
     setCity(place.city);
     setCountry(place.country);
+    setAddress(place.address ?? "");
     setCategory(place.category);
     setDescription(place.description);
     setAestheticNote(place.aestheticNote);
@@ -234,13 +251,27 @@ function PlaceDrawer({
     try {
       const updated = await updatePlace.mutateAsync({
         placeId: place.id,
-        body: { title, city, country, category, description, aestheticNote, tags },
+        body: { title, city, country, address, category, description, aestheticNote, tags },
       });
       onChange(updated);
       setEditing(false);
       toast.success("Place updated");
     } catch {
       toast.error("Failed to update place");
+    }
+  }
+
+  async function handleGeocode() {
+    try {
+      const updated = await geocodePlace.mutateAsync(place.id);
+      onChange(updated);
+      if (hasMapCoordinates(updated)) {
+        toast.success("Адрес найден и добавлен на карту");
+      } else {
+        toast.error("Не удалось найти адрес. Попробуйте уточнить название или адрес.");
+      }
+    } catch {
+      toast.error("Ошибка при поиске адреса");
     }
   }
 
@@ -265,40 +296,21 @@ function PlaceDrawer({
           className="h-full w-full max-w-md overflow-y-auto bg-background shadow-2xl"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="absolute right-3 top-3 z-10 flex gap-1.5">
-            {!editing && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setEditing(true)}
-                  className="rounded-full bg-background/90 p-1.5 shadow-md hover:bg-muted"
-                  title="Edit place"
-                >
-                  <Pencil className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmDelete(true)}
-                  className="rounded-full bg-background/90 p-1.5 shadow-md hover:bg-destructive/10 hover:text-destructive"
-                  title="Delete place"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </>
-            )}
+          <div className="relative">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-full bg-background/90 p-1.5 shadow-md"
+              className="absolute right-3 top-3 z-10 rounded-full bg-background/95 p-2 shadow-md ring-1 ring-border/60 transition-all hover:bg-accent hover:text-accent-foreground hover:shadow-lg active:scale-95"
+              title="Close"
             >
               <X className="h-4 w-4" />
             </button>
+            <img
+              src={resolveImageUrl(place.image)}
+              alt={place.title}
+              className="h-72 w-full object-cover"
+            />
           </div>
-          <img
-            src={resolveImageUrl(place.image)}
-            alt={place.title}
-            className="h-72 w-full object-cover"
-          />
           <div className="space-y-4 p-6">
             {editing ? (
               <>
@@ -326,6 +338,9 @@ function PlaceDrawer({
                         </option>
                       ))}
                     </select>
+                  </Field>
+                  <Field label="Address">
+                    <Input value={address} onChange={(e) => setAddress(e.target.value)} />
                   </Field>
                   <Field label="Description">
                     <Textarea
@@ -372,6 +387,44 @@ function PlaceDrawer({
                   <SourceBadge source={place.source} />
                   <VerificationBadge status={place.verification} />
                   <ConfidenceBadge value={place.confidence} />
+                  {hasMapCoordinates(place) ? (
+                    <span className="inline-flex items-center gap-1 rounded-md bg-success/15 px-2 py-0.5 text-[10px] font-medium text-success">
+                      <MapPinned className="h-3 w-3" />
+                      На карте
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 rounded-md bg-warning/15 px-2 py-0.5 text-[10px] font-medium text-warning">
+                      <AlertTriangle className="h-3 w-3" />
+                      Нужен адрес
+                    </span>
+                  )}
+                </div>
+                <div className="rounded-xl border border-border bg-muted/40 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+                        Адрес
+                      </div>
+                      <p className="mt-1 text-sm leading-relaxed">
+                        {place.address || "Address not found — enter manually or search"}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0"
+                      onClick={handleGeocode}
+                      disabled={geocodePlace.isPending}
+                    >
+                      {geocodePlace.isPending ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Search className="h-3.5 w-3.5" />
+                      )}
+                      <span className="ml-1.5">Найти</span>
+                    </Button>
+                  </div>
                 </div>
                 <div>
                   <div className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
@@ -391,6 +444,22 @@ function PlaceDrawer({
                   </div>
                   <p className="mt-1 text-sm text-foreground/80">{place.reason}</p>
                 </div>
+                {place.sourceUrl && (
+                  <div>
+                    <div className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+                      Source link
+                    </div>
+                    <a
+                      href={place.sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-1 inline-flex items-start gap-1.5 text-sm text-primary hover:underline"
+                    >
+                      <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <span className="break-all">{place.sourceUrl}</span>
+                    </a>
+                  </div>
+                )}
                 <div className="flex flex-wrap gap-1.5">
                   {place.tags.map((t) => (
                     <span
@@ -400,6 +469,26 @@ function PlaceDrawer({
                       {t}
                     </span>
                   ))}
+                </div>
+                <div className="flex items-center justify-end gap-2 border-t border-border pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setEditing(true)}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-muted/60 px-3 py-1.5 text-xs font-medium shadow-sm ring-1 ring-border/50 transition-all hover:bg-accent hover:text-accent-foreground hover:shadow-md active:scale-95"
+                    title="Edit place"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDelete(true)}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-muted/60 px-3 py-1.5 text-xs font-medium shadow-sm ring-1 ring-border/50 transition-all hover:bg-destructive/15 hover:text-destructive hover:ring-destructive/30 hover:shadow-md active:scale-95"
+                    title="Delete place"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete
+                  </button>
                 </div>
               </>
             )}

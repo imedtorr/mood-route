@@ -42,6 +42,7 @@ def _filter_unverified_stops(days: list[ItineraryDay]) -> list[ItineraryDay]:
                 lat=stop.lat,
                 lng=stop.lng,
                 placeId=stop.placeId,
+                address=stop.address,
             )
             for index, stop in enumerate(kept_stops)
         ]

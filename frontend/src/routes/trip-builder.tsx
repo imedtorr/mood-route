@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
 import { useApp } from "@/lib/app-context";
@@ -15,6 +15,7 @@ export const Route = createFileRoute("/trip-builder")({
 const styles = ["Efficient", "Aesthetic", "Hidden Gems", "Coffee Crawl", "Architecture Focus"];
 const moods = ["Minimal", "Neon", "Cozy", "Luxury", "Vintage", "Creative", "Slow Travel"];
 const intensities = ["Relaxed", "Balanced", "Packed"];
+const INTENSITY_CAP: Record<string, number> = { Relaxed: 3, Balanced: 4, Packed: 5 };
 
 function TripBuilder() {
   const navigate = useNavigate();
@@ -25,35 +26,29 @@ function TripBuilder() {
   const generateTrip = useGenerateTrip();
 
   const [days, setDays] = useState(4);
-  const [city, setCity] = useState(workspace.destination);
   const [style, setStyle] = useState("Aesthetic");
   const [intensity, setIntensity] = useState("Balanced");
   const [activeMoods, setActiveMoods] = useState<string[]>(["Minimal", "Slow Travel"]);
   const [prefs, setPrefs] = useState<string[]>([]);
-
-  const cityOptions = useMemo(() => {
-    const options = new Set<string>([workspace.destination]);
-    for (const p of places) {
-      if (p.city && p.country) options.add(`${p.city}, ${p.country}`);
-    }
-    return Array.from(options);
-  }, [workspace.destination, places]);
-
-  useEffect(() => {
-    setCity(workspace.destination);
-  }, [workspace.id, workspace.destination]);
 
   useEffect(() => {
     if (prefData?.preferences) setPrefs(prefData.preferences);
   }, [prefData]);
 
   const verified = places.filter((p) => p.verification === "Verified").length;
-  const estimate = Math.min(places.length + 6, days * 4 + 2);
+  const routable = places.filter(
+    (p) => p.verification !== "Needs Recheck" && (p.confidence ?? 0) >= 0.5,
+  );
+  const pool = routable.length > 0 ? routable : places;
+  const intensityCap = INTENSITY_CAP[intensity] ?? 4;
+  const stopsPerDay =
+    pool.length === 0 ? 0 : Math.min(intensityCap, Math.max(2, Math.floor(pool.length / days)));
+  const estimate = pool.length === 0 ? 0 : Math.min(pool.length, days * stopsPerDay);
 
   async function handleGenerate() {
     try {
       await generateTrip.mutateAsync({
-        city,
+        city: workspace.destination,
         days,
         style,
         moods: activeMoods,
@@ -102,20 +97,7 @@ function TripBuilder() {
           </div>
 
           <div className="rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-card)]">
-            <SectionTitle>City</SectionTitle>
-            <select
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
-              className="mt-2 w-full max-w-xs rounded-lg border border-border bg-background px-3 py-2 text-sm"
-            >
-              {cityOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-
-            <SectionTitle className="mt-6">Trip duration</SectionTitle>
+            <SectionTitle>Trip duration</SectionTitle>
             <div className="mt-3 flex items-center gap-4">
               <input
                 type="range"
@@ -203,7 +185,9 @@ function TripBuilder() {
             </div>
             <div className="mt-1 font-serif text-3xl">{estimate} places</div>
             <p className="mt-1 text-xs text-muted-foreground">
-              From your knowledge base + RAG-similar additions.
+              {pool.length === 0
+                ? "Add places to your knowledge base to build an itinerary."
+                : `From ${pool.length} saved place${pool.length === 1 ? "" : "s"} in ${workspace.destination}.`}
             </p>
 
             <div className="mt-4 space-y-2 text-xs">

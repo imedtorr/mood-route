@@ -82,6 +82,15 @@ export const api = {
     });
   },
 
+  deleteWorkspace: (workspaceId: string) => {
+    if (USE_MOCK) {
+      const idx = workspaces.findIndex((w) => w.id === workspaceId);
+      if (idx !== -1) workspaces.splice(idx, 1);
+      return Promise.resolve({ ok: true });
+    }
+    return request<{ ok: boolean }>(`/api/workspaces/${workspaceId}`, { method: "DELETE" });
+  },
+
   places: (workspaceId: string, params?: Record<string, string>) => {
     if (USE_MOCK) return Promise.resolve(places);
     const qs = params ? "?" + new URLSearchParams(params).toString() : "";
@@ -112,6 +121,23 @@ export const api = {
     return request<Place>(`/api/workspaces/${workspaceId}/places/${placeId}`, {
       method: "PATCH",
       body: JSON.stringify(body),
+    });
+  },
+
+  geocodePlace: (workspaceId: string, placeId: string) => {
+    if (USE_MOCK) {
+      const idx = places.findIndex((p) => p.id === placeId);
+      if (idx === -1) throw new ApiError(404, "Place not found");
+      places[idx] = {
+        ...places[idx],
+        lat: places[idx].lat ?? 35.6762,
+        lng: places[idx].lng ?? 139.6503,
+        address: places[idx].address || `${places[idx].title}, ${places[idx].city}`,
+      };
+      return Promise.resolve(places[idx]);
+    }
+    return request<Place>(`/api/workspaces/${workspaceId}/places/${placeId}/geocode`, {
+      method: "POST",
     });
   },
 

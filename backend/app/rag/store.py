@@ -58,6 +58,14 @@ def delete_place(workspace_id: str, place_id: str) -> None:
         pass
 
 
+def delete_workspace_collection(workspace_id: str) -> None:
+    client = get_chroma()
+    try:
+        client.delete_collection(collection_name(workspace_id))
+    except Exception:
+        pass
+
+
 def search_places(workspace_id: str, query: str, n: int = 5) -> list[tuple[str, float]]:
     client = get_chroma()
     try:

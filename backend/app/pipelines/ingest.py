@@ -15,6 +15,7 @@ from app.db.models import PlaceModel, UploadModel, WorkspaceModel
 from app.domain.places import is_place_specific
 from app.rag.store import upsert_place
 from app.services.agent_log import log_agent_event
+from app.services.workspaces import touch_workspace
 from app.services.gigachat import gigachat_service
 
 
@@ -188,6 +189,7 @@ async def run_ingest_pipeline(db: Session, upload_id: str) -> None:
                 image=extracted.get("image") or image or upload.image,
                 description=extracted.get("description", ""),
                 aesthetic_note=extracted.get("aestheticNote", ""),
+                address=extracted.get("address", ""),
                 reason=f"Extracted from {upload.source} inspiration.",
                 upload_id=upload.id,
             )
@@ -223,12 +225,14 @@ async def run_ingest_pipeline(db: Session, upload_id: str) -> None:
             upload.status = "Completed"
             upload.progress = 100
         db.add(upload)
+        touch_workspace(db, ws_id)
         db.commit()
 
     except Exception as exc:
         upload.status = "Fallback / Needs manual review"
         upload.progress = 100
         db.add(upload)
+        touch_workspace(db, ws_id)
         db.commit()
         log_agent_event(
             db,

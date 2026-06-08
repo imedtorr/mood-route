@@ -30,6 +30,7 @@ class Workspace(BaseModel):
     country: str
     city: str
     destination: str
+    updatedAt: str | None = None
 
 
 class WorkspaceCreate(BaseModel):
@@ -57,6 +58,8 @@ class Place(BaseModel):
     lat: float | None = None
     lng: float | None = None
     district: str = ""
+    address: str = ""
+    sourceUrl: str | None = None
 
 
 class Upload(BaseModel):
@@ -99,6 +102,7 @@ class ItineraryStop(BaseModel):
     lat: float | None = None
     lng: float | None = None
     placeId: str | None = None
+    address: str = ""
 
 
 class ItineraryDay(BaseModel):
@@ -179,3 +183,4 @@ class PlaceUpdate(BaseModel):
     aestheticNote: str | None = None
     tags: list[str] | None = None
     verification: str | None = None
+    address: str | None = None

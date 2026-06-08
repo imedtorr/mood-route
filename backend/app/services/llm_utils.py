@@ -36,6 +36,7 @@ class ExtractedPlace(BaseModel):
     title: str = ""
     city: str = ""
     country: str = ""
+    address: str = ""
     category: str = "Other"
     tags: list[str] = Field(default_factory=list)
     description: str = ""

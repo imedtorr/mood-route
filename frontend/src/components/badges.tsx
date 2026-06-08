@@ -49,9 +49,11 @@ export function AgentBadge({ agent, className }: { agent: AgentName; className?:
 
 export function VerificationBadge({
   status,
+  compact = false,
   className,
 }: {
   status: Verification;
+  compact?: boolean;
   className?: string;
 }) {
   const map = {
@@ -63,24 +65,27 @@ export function VerificationBadge({
     },
   } as const;
   const { cls, Icon } = map[status];
+  const label = compact && status === "Needs Recheck" ? "Recheck" : status;
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium",
+        "inline-flex items-center gap-1 truncate rounded-full border px-2 py-0.5 text-[10px] font-medium",
         cls,
         className,
       )}
     >
-      <Icon className="h-3 w-3" /> {status}
+      <Icon className="h-3 w-3 shrink-0" /> {label}
     </span>
   );
 }
 
 export function SourceBadge({
   source,
+  compact = false,
   className,
 }: {
   source: SourceType | "Saved" | "RAG Similar" | "Verified Recommendation";
+  compact?: boolean;
   className?: string;
 }) {
   const map: Record<string, { cls: string; Icon: typeof CheckCircle2 }> = {
@@ -101,12 +106,13 @@ export function SourceBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium",
+        "inline-flex items-center gap-1 truncate rounded-full border px-2 py-0.5 text-[10px] font-medium",
         cls,
         className,
       )}
     >
-      <Icon className="h-3 w-3" /> {source}
+      <Icon className="h-3 w-3 shrink-0" />
+      {!compact || source.length <= 10 ? source : source.slice(0, 9) + "…"}
     </span>
   );
 }

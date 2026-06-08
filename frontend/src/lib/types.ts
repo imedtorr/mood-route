@@ -32,6 +32,8 @@ export type Place = {
   lat?: number | null;
   lng?: number | null;
   district?: string;
+  address?: string;
+  sourceUrl?: string | null;
 };
 
 export type PlaceUpdate = {
@@ -43,6 +45,7 @@ export type PlaceUpdate = {
   aestheticNote?: string;
   tags?: string[];
   verification?: Verification;
+  address?: string;
 };
 
 export type Workspace = {
@@ -52,6 +55,7 @@ export type Workspace = {
   country: string;
   city: string;
   destination: string;
+  updatedAt?: string | null;
 };
 
 export type WorkspaceCreate = {
@@ -120,6 +124,7 @@ export type ItineraryStop = {
   lat?: number | null;
   lng?: number | null;
   placeId?: string | null;
+  address?: string;
 };
 
 export type ItineraryDay = { day: number; theme: string; stops: ItineraryStop[] };

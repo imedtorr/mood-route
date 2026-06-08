@@ -93,10 +93,15 @@ function RoutePlanner() {
                       <div className="space-y-3 p-5">
                         <div className="flex items-start justify-between gap-2">
                           <div>
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                               <Clock className="h-3 w-3" /> {s.time}
                               <span>•</span>
-                              <MapPin className="h-3 w-3" /> {s.district}
+                              <MapPin className="h-3 w-3" /> {s.address || s.district}
+                              {(s.lat == null || s.lng == null) && (
+                                <span className="rounded bg-warning/15 px-1.5 py-0.5 text-warning">
+                                  нет координат
+                                </span>
+                              )}
                             </div>
                             <h3 className="mt-1 font-serif text-2xl leading-tight">{s.title}</h3>
                           </div>

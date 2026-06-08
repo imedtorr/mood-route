@@ -18,9 +18,11 @@ from app.db.models import (
     UploadModel,
     WorkspaceModel,
 )
+from app.agents.researcher import ensure_place_geocoded
 from app.pipelines.ingest import TERMINAL_UPLOAD_STATUSES, run_ingest_pipeline
 from app.rag.store import search_places, upsert_place, delete_place
 from app.services.countries import country_to_flag, default_trip_name
+from app.services.workspaces import delete_workspace, touch_workspace
 
 from app.schemas import (
     ItineraryResponse,
@@ -40,7 +42,7 @@ from app.schemas import (
 from app.schemas.mappers import (
     agent_event_to_schema,
     itinerary_to_schema,
-    place_to_schema,
+    places_to_schema,
     review_to_schema,
     upload_to_schema,
     workspace_to_schema,
@@ -88,7 +90,10 @@ PLACE_EDIT_FIELDS = {
     "description": "description",
     "aestheticNote": "aesthetic_note",
     "verification": "verification",
+    "address": "address",
 }
+
+GEOCODE_TRIGGER_FIELDS = frozenset({"title", "city", "country", "address"})
 
 
 def apply_place_edits(place: PlaceModel, edits: dict) -> None:
@@ -108,7 +113,12 @@ def health():
 
 @router.get("/workspaces", response_model=list[Workspace])
 def list_workspaces(db: Session = Depends(get_db)):
-    return [workspace_to_schema(w) for w in db.query(WorkspaceModel).all()]
+    rows = (
+        db.query(WorkspaceModel)
+        .order_by(WorkspaceModel.updated_at.desc())
+        .all()
+    )
+    return [workspace_to_schema(w) for w in rows]
 
 
 @router.post("/workspaces", response_model=Workspace)
@@ -136,6 +146,13 @@ def create_workspace(body: WorkspaceCreate, db: Session = Depends(get_db)):
     return workspace_to_schema(ws)
 
 
+@router.delete("/workspaces/{workspace_id}")
+def delete_workspace_endpoint(workspace_id: str, db: Session = Depends(get_db)):
+    get_workspace_or_404(db, workspace_id)
+    delete_workspace(db, workspace_id)
+    return {"ok": True}
+
+
 @router.get("/workspaces/{workspace_id}/places", response_model=list[Place])
 def list_places(
     workspace_id: str,
@@ -155,7 +172,7 @@ def list_places(
         q = q.filter(PlaceModel.category == category)
     if verification and verification != "All":
         q = q.filter(PlaceModel.verification == verification)
-    return [place_to_schema(p) for p in q.all()]
+    return places_to_schema(db, q.all())
 
 
 @router.get("/workspaces/{workspace_id}/places/search", response_model=PlaceSearchResult)
@@ -173,18 +190,18 @@ def search_places_endpoint(
             PlaceModel.status == "active",
             PlaceModel.title.ilike(f"%{q}%"),
         ).limit(12).all()
-        return PlaceSearchResult(places=[place_to_schema(p) for p in places], query=q)
+        return PlaceSearchResult(places=places_to_schema(db, places), query=q)
     id_order = {pid: i for i, pid in enumerate(place_ids)}
     places = db.query(PlaceModel).filter(
         PlaceModel.id.in_(place_ids),
         PlaceModel.status == "active",
     ).all()
     places.sort(key=lambda p: id_order.get(p.id, 999))
-    return PlaceSearchResult(places=[place_to_schema(p) for p in places], query=q)
+    return PlaceSearchResult(places=places_to_schema(db, places), query=q)
 
 
 @router.patch("/workspaces/{workspace_id}/places/{place_id}", response_model=Place)
-def update_place(
+async def update_place(
     workspace_id: str,
     place_id: str,
     body: PlaceUpdate,
@@ -195,10 +212,29 @@ def update_place(
     edits = body.model_dump(exclude_unset=True)
     apply_place_edits(place, edits)
     db.add(place)
+    touch_workspace(db, workspace_id)
     db.commit()
     db.refresh(place)
-    upsert_place(place)
-    return place_to_schema(place)
+    if GEOCODE_TRIGGER_FIELDS & set(edits.keys()):
+        await ensure_place_geocoded(db, place, workspace_id, force=True)
+    else:
+        upsert_place(place)
+    db.refresh(place)
+    return places_to_schema(db, [place])[0]
+
+
+@router.post("/workspaces/{workspace_id}/places/{place_id}/geocode", response_model=Place)
+async def geocode_place_endpoint(
+    workspace_id: str,
+    place_id: str,
+    db: Session = Depends(get_db),
+):
+    get_workspace_or_404(db, workspace_id)
+    place = get_place_or_404(db, workspace_id, place_id)
+    await ensure_place_geocoded(db, place, workspace_id, force=True)
+    touch_workspace(db, workspace_id)
+    db.refresh(place)
+    return places_to_schema(db, [place])[0]
 
 
 @router.delete("/workspaces/{workspace_id}/places/{place_id}")
@@ -210,6 +246,7 @@ def delete_place_endpoint(
     get_workspace_or_404(db, workspace_id)
     place = get_place_or_404(db, workspace_id, place_id)
     permanently_remove_place(db, workspace_id, place)
+    touch_workspace(db, workspace_id)
     db.commit()
     return {"ok": True}
 
@@ -275,6 +312,7 @@ def cancel_upload(workspace_id: str, upload_id: str, db: Session = Depends(get_d
     upload.status = "Cancelled"
     upload.progress = 100
     db.add(upload)
+    touch_workspace(db, workspace_id)
     db.commit()
     db.refresh(upload)
     return upload_to_schema(upload)
@@ -289,6 +327,7 @@ def delete_upload(workspace_id: str, upload_id: str, db: Session = Depends(get_d
         db.commit()
     _remove_upload_file(upload)
     db.delete(upload)
+    touch_workspace(db, workspace_id)
     db.commit()
     return {"ok": True}
 
@@ -326,6 +365,7 @@ def create_url_upload(
         raw_url=body.url,
     )
     db.add(upload)
+    touch_workspace(db, workspace_id)
     db.commit()
     db.refresh(upload)
     background_tasks.add_task(_run_ingest_task, upload.id)
@@ -351,6 +391,7 @@ def create_text_upload(
         note=body.note,
     )
     db.add(upload)
+    touch_workspace(db, workspace_id)
     db.commit()
     db.refresh(upload)
     background_tasks.add_task(_run_ingest_task, upload.id)
@@ -386,6 +427,7 @@ async def create_file_upload(
         file_path=str(file_path),
     )
     db.add(upload)
+    touch_workspace(db, workspace_id)
     db.commit()
     db.refresh(upload)
     background_tasks.add_task(_run_ingest_task, upload.id)
@@ -453,6 +495,7 @@ def review_action(
 
     review.resolved = True
     db.add(review)
+    touch_workspace(db, workspace_id)
     db.commit()
     return {"ok": True}
 
@@ -468,6 +511,7 @@ def update_preferences(workspace_id: str, body: PreferencesUpdate, db: Session =
     ws = get_workspace_or_404(db, workspace_id)
     ws.preferences = body.preferences
     db.add(ws)
+    touch_workspace(db, workspace_id)
     db.commit()
     return {"preferences": ws.preferences}
 
@@ -503,6 +547,7 @@ async def generate_trip(
         is_latest=True,
     )
     db.add(it)
+    touch_workspace(db, workspace_id)
     db.commit()
 
     return itinerary_to_schema(it)

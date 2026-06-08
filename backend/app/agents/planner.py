@@ -1,7 +1,9 @@
+import asyncio
 from collections import defaultdict
 
 from sqlalchemy.orm import Session
 
+from app.agents.researcher import ensure_place_geocoded
 from app.db.models import PlaceModel
 from app.rag.store import search_places
 from app.schemas import ItineraryDay, ItineraryStop, SourcesSummary, TripGenerateRequest
@@ -70,15 +72,54 @@ def _is_routable_place(place: PlaceModel) -> bool:
     return place.confidence >= 0.5 and place.verification != "Needs Recheck"
 
 
+def _has_coordinates(place: PlaceModel) -> bool:
+    return place.lat is not None and place.lng is not None
+
+
+async def _ensure_coordinates_for_places(
+    db: Session,
+    workspace_id: str,
+    places: list[PlaceModel],
+) -> int:
+    geocoded = 0
+    for index, place in enumerate(places):
+        if _has_coordinates(place):
+            continue
+        if index > 0:
+            await asyncio.sleep(1.1)
+        before = place.lat
+        await ensure_place_geocoded(db, place, workspace_id)
+        if place.lat is not None and before is None:
+            geocoded += 1
+    if geocoded:
+        log_agent_event(
+            db,
+            workspace_id,
+            "Planner Agent",
+            "Success",
+            f"Geocoded {geocoded} place(s) before route planning.",
+            confidence=0.9,
+            tools=["geocode_place"],
+            input_preview=f"{len(places)} candidates",
+            output_preview=f"{geocoded} newly geocoded",
+        )
+    return geocoded
+
+
 async def generate_itinerary(
     db: Session,
     workspace_id: str,
     places: list[PlaceModel],
     req: TripGenerateRequest,
 ) -> tuple[list[ItineraryDay], SourcesSummary, str]:
-    routable = [place for place in places if _is_routable_place(place)]
+    await _ensure_coordinates_for_places(db, workspace_id, places)
+
+    routable = [
+        place for place in places
+        if _is_routable_place(place) and _has_coordinates(place)
+    ]
     if not routable:
-        routable = places
+        routable = [place for place in places if _has_coordinates(place)]
 
     intensity_cap = {"Relaxed": 3, "Balanced": 4, "Packed": 5}[req.intensity]
     stops_per_day = min(intensity_cap, max(2, len(routable) // req.days))
@@ -171,6 +212,7 @@ async def generate_itinerary(
                     lat=place.lat,
                     lng=place.lng,
                     placeId=place.id,
+                    address=place.address or "",
                 )
             )
 

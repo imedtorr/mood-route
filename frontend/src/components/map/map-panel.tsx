@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { MapContainer, TileLayer, Marker, Polyline, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import type { ItineraryStop } from "@/lib/types";
 import "leaflet/dist/leaflet.css";
@@ -42,30 +42,47 @@ export function MapPanel({ stops }: { stops: ItineraryStop[] }) {
   const coords = stops
     .filter((s) => s.lat != null && s.lng != null)
     .map((s) => [s.lat!, s.lng!] as [number, number]);
+  const missingCount = stops.filter((s) => s.lat == null || s.lng == null).length;
 
   return (
-    <MapContainer
-      center={[35.6762, 139.6503]}
-      zoom={12}
-      className="h-[420px] w-full"
-      scrollWheelZoom={false}
-    >
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
-      <FitBounds stops={stops} />
-      {stops.map((s) =>
-        s.lat != null && s.lng != null ? (
-          <Marker key={s.n} position={[s.lat, s.lng]} icon={numberedIcon(s.n)} />
-        ) : null,
+    <div>
+      {missingCount > 0 && (
+        <div className="border-b border-border bg-warning/10 px-4 py-2 text-xs text-warning">
+          {missingCount} остановок без координат не отображены на карте
+        </div>
       )}
-      {coords.length >= 2 && (
-        <Polyline
-          positions={coords}
-          pathOptions={{ color: "#c45c26", weight: 3, dashArray: "6 8" }}
+      <MapContainer
+        center={[35.6762, 139.6503]}
+        zoom={12}
+        className="h-[420px] w-full"
+        scrollWheelZoom={false}
+      >
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-      )}
-    </MapContainer>
+        <FitBounds stops={stops} />
+        {stops.map((s) =>
+          s.lat != null && s.lng != null ? (
+            <Marker key={s.n} position={[s.lat, s.lng]} icon={numberedIcon(s.n)}>
+              <Popup>
+                <div className="space-y-1 text-sm">
+                  <div className="font-medium">{s.title}</div>
+                  {(s.address || s.district) && (
+                    <div className="text-muted-foreground">{s.address || s.district}</div>
+                  )}
+                </div>
+              </Popup>
+            </Marker>
+          ) : null,
+        )}
+        {coords.length >= 2 && (
+          <Polyline
+            positions={coords}
+            pathOptions={{ color: "#c45c26", weight: 3, dashArray: "6 8" }}
+          />
+        )}
+      </MapContainer>
+    </div>
   );
 }

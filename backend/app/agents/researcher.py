@@ -10,6 +10,61 @@ from app.services.geocoding import geocode_place
 from app.services.tavily import tavily_service
 
 
+def _geocode_title(place: PlaceModel) -> str:
+    place_dict = {
+        "title": place.title,
+        "city": place.city,
+        "country": place.country,
+        "confidence": place.confidence,
+        "description": place.description,
+    }
+    specific = is_place_specific(place_dict)
+    return place.title if specific else f"{place.title} {place.city}".strip()
+
+
+async def ensure_place_geocoded(
+    db: Session,
+    place: PlaceModel,
+    workspace_id: str | None = None,
+    *,
+    force: bool = False,
+) -> PlaceModel:
+    if not force and place.lat is not None and place.lng is not None:
+        return place
+
+    geocode_title = _geocode_title(place)
+    lat, lng, district, resolved_address = await geocode_place(
+        geocode_title,
+        place.city,
+        place.country,
+        place.address or "",
+        place.category,
+    )
+    if lat is not None and lng is not None:
+        place.lat = lat
+        place.lng = lng
+        place.district = district
+        if resolved_address and not place.address:
+            place.address = resolved_address
+        db.add(place)
+        db.commit()
+        db.refresh(place)
+        upsert_place(place)
+        if workspace_id:
+            log_agent_event(
+                db,
+                workspace_id,
+                "Researcher Agent",
+                "Success",
+                f"Geocoded {place.title}.",
+                confidence=place.confidence,
+                tools=["geocode_place"],
+                input_preview=place.title,
+                output_preview=f"{place.address or district}, lat={place.lat:.4f}",
+            )
+    return place
+
+
 async def enrich_place(db: Session, place: PlaceModel, workspace_id: str) -> PlaceModel:
     tools: list[str] = ["geocode_place"]
     place_dict = {
@@ -54,12 +109,20 @@ async def enrich_place(db: Session, place: PlaceModel, workspace_id: str) -> Pla
             output_preview="Saved as Unverified, will retry later.",
         )
 
-    geocode_title = place.title if specific else f"{place.title} {place.city}".strip()
-    lat, lng, district = await geocode_place(geocode_title, place.city, place.country)
-    if lat and lng:
+    geocode_title = _geocode_title(place)
+    lat, lng, district, resolved_address = await geocode_place(
+        geocode_title,
+        place.city,
+        place.country,
+        place.address or "",
+        place.category,
+    )
+    if lat is not None and lng is not None:
         place.lat = lat
         place.lng = lng
         place.district = district
+        if resolved_address and not place.address:
+            place.address = resolved_address
 
     if tavily_service.available:
         place.verification = verification
@@ -85,7 +148,7 @@ async def enrich_place(db: Session, place: PlaceModel, workspace_id: str) -> Pla
         confidence=conf,
         tools=tools,
         input_preview=place.title,
-        output_preview=f"{place.verification}, district={place.district}",
+        output_preview=f"{place.verification}, address={place.address or place.district}",
     )
     return place
 

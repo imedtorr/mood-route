@@ -21,6 +21,7 @@ class WorkspaceModel(Base):
     city: Mapped[str] = mapped_column(String(128), default="")
     destination: Mapped[str] = mapped_column(String(256))
     preferences_json: Mapped[str] = mapped_column(Text, default="[]")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
     places: Mapped[list["PlaceModel"]] = relationship(back_populates="workspace")
     uploads: Mapped[list["UploadModel"]] = relationship(back_populates="workspace")
@@ -57,6 +58,7 @@ class PlaceModel(Base):
     height: Mapped[int | None] = mapped_column(Integer, nullable=True)
     lat: Mapped[float | None] = mapped_column(Float, nullable=True)
     lng: Mapped[float | None] = mapped_column(Float, nullable=True)
+    address: Mapped[str] = mapped_column(String(512), default="")
     upload_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     district: Mapped[str] = mapped_column(String(128), default="")
     status: Mapped[str] = mapped_column(String(32), default="active")
