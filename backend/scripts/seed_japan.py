@@ -325,9 +325,10 @@ def seed_db(db: Session) -> None:
         db.commit()
 
     if db.query(AgentEventModel).filter(AgentEventModel.workspace_id == "jp").count() == 0:
+        demo_run_id = "run_demo_jp"
         for i, e in enumerate(AGENT_EVENTS):
             ev = AgentEventModel(
-                id=f"a{i+1}", workspace_id="jp", agent=e["agent"], status=e["status"],
+                id=f"a{i+1}", workspace_id="jp", run_id=demo_run_id, agent=e["agent"], status=e["status"],
                 summary=e["summary"], confidence=e["confidence"],
                 input_preview=e["input"], output_preview=e["output"],
             )

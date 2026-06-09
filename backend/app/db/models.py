@@ -62,6 +62,7 @@ class PlaceModel(Base):
     upload_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     district: Mapped[str] = mapped_column(String(128), default="")
     status: Mapped[str] = mapped_column(String(32), default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     workspace: Mapped["WorkspaceModel"] = relationship(back_populates="places")
 
@@ -127,6 +128,7 @@ class AgentEventModel(Base):
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"))
+    run_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     agent: Mapped[str] = mapped_column(String(64))
     status: Mapped[str] = mapped_column(String(32))
     summary: Mapped[str] = mapped_column(Text)

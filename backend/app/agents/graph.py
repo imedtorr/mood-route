@@ -6,11 +6,12 @@ from sqlalchemy.orm import Session
 from app.agents.planner import generate_itinerary
 from app.db.models import PlaceModel
 from app.schemas import ItineraryDay, ItineraryStop, SourcesSummary, TripGenerateRequest
-from app.services.agent_log import log_agent_event
+from app.services.agent_log import log_agent_event, new_run_id
 
 
 class TripState(TypedDict):
     workspace_id: str
+    run_id: str
     request: TripGenerateRequest
     places: list[PlaceModel]
     days: list[ItineraryDay]
@@ -56,6 +57,8 @@ async def run_trip_generation(
     places: list[PlaceModel],
     request: TripGenerateRequest,
 ) -> tuple[list[ItineraryDay], SourcesSummary, str]:
+    run_id = new_run_id()
+
     async def supervisor(state: TripState) -> TripState:
         req = state["request"]
         log_agent_event(
@@ -68,12 +71,13 @@ async def run_trip_generation(
             tools=["plan_route", "delegate_task"],
             input_preview=f"workspace={state['workspace_id']}, days={req.days}, style={req.style}",
             output_preview="Delegated to Planner → Verifier.",
+            run_id=state["run_id"],
         )
         return state
 
     async def planner(state: TripState) -> TripState:
         days, sources, summary = await generate_itinerary(
-            db, state["workspace_id"], state["places"], state["request"]
+            db, state["workspace_id"], state["places"], state["request"], run_id=state["run_id"]
         )
         state["days"] = days
         state["sources"] = sources
@@ -99,6 +103,7 @@ async def run_trip_generation(
             tools=["verify_place_status"],
             input_preview=f"{original_stop_count} stops",
             output_preview=f"{filtered_stop_count} stops kept",
+            run_id=state["run_id"],
         )
         return state
 
@@ -114,6 +119,7 @@ async def run_trip_generation(
 
     initial: TripState = {
         "workspace_id": workspace_id,
+        "run_id": run_id,
         "request": request,
         "places": places,
         "days": [],

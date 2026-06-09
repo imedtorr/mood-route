@@ -31,6 +31,7 @@ function InboxPage() {
   const [url, setUrl] = useState("");
   const [placeQuery, setPlaceQuery] = useState("");
   const [note, setNote] = useState("");
+  const [activeTab, setActiveTab] = useState("photo");
   const [dragging, setDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -82,8 +83,17 @@ function InboxPage() {
       />
 
       <div className="mx-auto max-w-5xl px-4 py-6 md:px-8">
-        <Tabs defaultValue="photo" className="grid gap-4 lg:grid-cols-5">
-          <div className="rounded-2xl border border-border bg-card p-5 lg:col-span-3">
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className={cn("grid gap-4", activeTab === "photo" && "lg:grid-cols-5")}
+        >
+          <div
+            className={cn(
+              "rounded-2xl border border-border bg-card p-5",
+              activeTab === "photo" && "lg:col-span-3",
+            )}
+          >
             <TabsList className="mb-4 grid w-full grid-cols-3">
               <TabsTrigger value="photo">Photo</TabsTrigger>
               <TabsTrigger value="article">Article</TabsTrigger>
@@ -108,6 +118,16 @@ function InboxPage() {
                   Add
                 </Button>
               </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Social media post?{" "}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("photo")}
+                  className="font-medium text-foreground underline-offset-2 hover:underline"
+                >
+                  Upload a screenshot instead
+                </button>
+              </p>
             </TabsContent>
 
             <TabsContent value="place" className="mt-0">
@@ -128,6 +148,16 @@ function InboxPage() {
                   Add
                 </Button>
               </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Saved as an image?{" "}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("photo")}
+                  className="font-medium text-foreground underline-offset-2 hover:underline"
+                >
+                  Upload a screenshot instead
+                </button>
+              </p>
             </TabsContent>
 
             <TabsContent value="photo" className="mt-0">
@@ -147,43 +177,45 @@ function InboxPage() {
             />
           </div>
 
-          <div className="lg:col-span-2">
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              className="hidden"
-              onChange={(e) => handleFiles(e.target.files)}
-            />
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() => fileRef.current?.click()}
-              onKeyDown={(e) => e.key === "Enter" && fileRef.current?.click()}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragging(true);
-              }}
-              onDragLeave={() => setDragging(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDragging(false);
-                handleFiles(e.dataTransfer.files);
-              }}
-              className={cn(
-                "flex h-full min-h-44 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition-colors",
-                dragging ? "border-primary bg-primary/5" : "border-border bg-card",
-              )}
-            >
-              <span className="flex size-12 items-center justify-center rounded-full bg-accent text-accent-foreground">
-                <UploadCloud className="size-6" />
-              </span>
-              <p className="mt-3 text-sm font-medium text-foreground">Drag a screenshot here</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                or click — PNG, JPG up to 10MB
-              </p>
+          {activeTab === "photo" && (
+            <div className="lg:col-span-2">
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={(e) => handleFiles(e.target.files)}
+              />
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => fileRef.current?.click()}
+                onKeyDown={(e) => e.key === "Enter" && fileRef.current?.click()}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragging(true);
+                }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragging(false);
+                  handleFiles(e.dataTransfer.files);
+                }}
+                className={cn(
+                  "flex h-full min-h-44 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition-colors",
+                  dragging ? "border-primary bg-primary/5" : "border-border bg-card",
+                )}
+              >
+                <span className="flex size-12 items-center justify-center rounded-full bg-accent text-accent-foreground">
+                  <UploadCloud className="size-6" />
+                </span>
+                <p className="mt-3 text-sm font-medium text-foreground">Drag a screenshot here</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  or click — PNG, JPG up to 10MB
+                </p>
+              </div>
             </div>
-          </div>
+          )}
         </Tabs>
 
         <div className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground">

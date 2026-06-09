@@ -1,7 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { api } from "@/lib/api/client";
-import type { TripGenerateRequest, PlaceUpdate, WorkspaceCreate } from "@/lib/types";
+import type {
+  TripGenerateRequest,
+  PlaceUpdate,
+  WorkspaceCreate,
+  ItineraryStopActionRequest,
+} from "@/lib/types";
 import { useApp } from "@/lib/app-context";
 
 const TERMINAL_UPLOAD_STATUSES = [
@@ -206,6 +211,18 @@ export function useGenerateTrip() {
   });
 }
 
+export function useItineraryStopAction() {
+  const qc = useQueryClient();
+  const { workspace } = useApp();
+  return useMutation({
+    mutationFn: (body: ItineraryStopActionRequest) =>
+      api.patchItineraryStop(workspace.id, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["trip", workspace.id] });
+    },
+  });
+}
+
 export function useReviewAction() {
   const qc = useQueryClient();
   const { workspace } = useApp();
@@ -224,6 +241,7 @@ export function useReviewAction() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["reviews", workspace.id] });
       qc.invalidateQueries({ queryKey: ["places", workspace.id] });
+      qc.invalidateQueries({ queryKey: ["uploads", workspace.id] });
     },
   });
 }
@@ -234,7 +252,10 @@ export function useUpdatePlace() {
   return useMutation({
     mutationFn: ({ placeId, body }: { placeId: string; body: PlaceUpdate }) =>
       api.updatePlace(workspace.id, placeId, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["places", workspace.id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["places", workspace.id] });
+      qc.invalidateQueries({ queryKey: ["uploads", workspace.id] });
+    },
   });
 }
 
@@ -244,6 +265,18 @@ export function useGeocodePlace() {
   return useMutation({
     mutationFn: (placeId: string) => api.geocodePlace(workspace.id, placeId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["places", workspace.id] }),
+  });
+}
+
+export function useEnrichPlace() {
+  const qc = useQueryClient();
+  const { workspace } = useApp();
+  return useMutation({
+    mutationFn: (placeId: string) => api.enrichPlace(workspace.id, placeId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["places", workspace.id] });
+      qc.invalidateQueries({ queryKey: ["agentEvents", workspace.id] });
+    },
   });
 }
 

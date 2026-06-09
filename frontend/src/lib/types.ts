@@ -166,3 +166,13 @@ export type TripGenerateRequest = {
   intensity?: string;
   aestheticMode?: boolean;
 };
+
+export type ItineraryStopAction = "remove" | "move" | "replace";
+
+export type ItineraryStopActionRequest = {
+  action: ItineraryStopAction;
+  day: number;
+  stopN: number;
+  targetDay?: number;
+  placeId?: string;
+};

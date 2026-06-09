@@ -14,7 +14,7 @@ from app.agents.verifier import verify_places
 from app.db.models import PlaceModel, UploadModel, WorkspaceModel
 from app.domain.places import is_place_specific
 from app.rag.store import upsert_place
-from app.services.agent_log import log_agent_event
+from app.services.agent_log import log_agent_event, new_run_id
 from app.services.workspaces import touch_workspace
 from app.services.gigachat import gigachat_service
 
@@ -56,6 +56,7 @@ async def run_ingest_pipeline(db: Session, upload_id: str) -> None:
         if destination_hint and "," in destination_hint
         else (destination_hint, "")
     )
+    run_id = new_run_id()
     log_agent_event(
         db,
         ws_id,
@@ -65,6 +66,7 @@ async def run_ingest_pipeline(db: Session, upload_id: str) -> None:
         tools=["delegate_task"],
         input_preview=upload_id,
         output_preview="Delegated to Curator → Researcher → Verifier.",
+        run_id=run_id,
     )
 
     try:
@@ -172,6 +174,7 @@ async def run_ingest_pipeline(db: Session, upload_id: str) -> None:
             tools=["ollama_vision", "ollama_text", "extract_places"],
             input_preview=upload.title,
             output_preview=place_titles,
+            run_id=run_id,
         )
 
         places: list[PlaceModel] = []
@@ -203,11 +206,11 @@ async def run_ingest_pipeline(db: Session, upload_id: str) -> None:
         for idx, place in enumerate(places):
             if _is_cancelled(db, upload_id):
                 return
-            places[idx] = await enrich_place(db, place, ws_id)
+            places[idx] = await enrich_place(db, place, ws_id, run_id=run_id)
 
         if not _set_upload(db, upload, "Classifying categories", 85):
             return
-        await verify_places(db, ws_id, places, check_duplicates=True)
+        await verify_places(db, ws_id, places, check_duplicates=True, run_id=run_id)
         for place in places:
             upsert_place(place)
 
@@ -244,4 +247,5 @@ async def run_ingest_pipeline(db: Session, upload_id: str) -> None:
             tools=["extract_places"],
             input_preview=upload.title,
             output_preview="Needs manual review",
+            run_id=run_id,
         )

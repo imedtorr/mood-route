@@ -1,6 +1,7 @@
 import type {
   AgentTimelineEntry,
   ItineraryResponse,
+  ItineraryStopActionRequest,
   Place,
   PlaceUpdate,
   ReviewCard,
@@ -9,6 +10,7 @@ import type {
   Workspace,
   WorkspaceCreate,
 } from "@/lib/types";
+import { applyItineraryStopAction } from "@/lib/itinerary-mutations";
 import { countryToFlag, defaultTripName } from "@/lib/countries";
 import {
   agentTimeline,
@@ -23,7 +25,7 @@ import {
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === "true";
 export const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
 
-class ApiError extends Error {
+export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
@@ -137,6 +139,24 @@ export const api = {
       return Promise.resolve(places[idx]);
     }
     return request<Place>(`/api/workspaces/${workspaceId}/places/${placeId}/geocode`, {
+      method: "POST",
+    });
+  },
+
+  enrichPlace: (workspaceId: string, placeId: string) => {
+    if (USE_MOCK) {
+      const idx = places.findIndex((p) => p.id === placeId);
+      if (idx === -1) throw new ApiError(404, "Place not found");
+      places[idx] = {
+        ...places[idx],
+        description: places[idx].description || "Обогащённое описание места.",
+        aestheticNote: places[idx].aestheticNote || "Уютная атмосфера для неспешной прогулки.",
+        tags: places[idx].tags.length ? places[idx].tags : ["Hidden Gem", "Slow Travel"],
+        confidence: Math.max(places[idx].confidence, 0.85),
+      };
+      return Promise.resolve(places[idx]);
+    }
+    return request<Place>(`/api/workspaces/${workspaceId}/places/${placeId}/enrich`, {
       method: "POST",
     });
   },
@@ -283,9 +303,28 @@ export const api = {
           sourcesSummary: { saved: 12, rag: 4, verified: 2, review: 1 },
           routeSummary:
             "Grouped by neighborhood to reduce travel time and preserve aesthetic flow.",
-          tripRequest: { days: 4 },
+          tripRequest: { days: 4, aestheticMode: false },
         })
       : request<ItineraryResponse>(`/api/workspaces/${workspaceId}/trips/latest`),
+
+  patchItineraryStop: (workspaceId: string, body: ItineraryStopActionRequest) => {
+    if (USE_MOCK) {
+      const updatedDays = applyItineraryStopAction(itinerary, body, places, false);
+      itinerary.length = 0;
+      itinerary.push(...updatedDays);
+      return Promise.resolve({
+        days: [...itinerary],
+        sourcesSummary: { saved: 12, rag: 4, verified: 2, review: 1 },
+        routeSummary:
+          "Grouped by neighborhood to reduce travel time and preserve aesthetic flow.",
+        tripRequest: { days: itinerary.length },
+      });
+    }
+    return request<ItineraryResponse>(`/api/workspaces/${workspaceId}/trips/latest`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+  },
 
   agentEvents: (workspaceId: string) =>
     USE_MOCK

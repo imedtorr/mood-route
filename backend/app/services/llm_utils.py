@@ -130,3 +130,23 @@ def validate_extracted_place(data: dict[str, Any]) -> dict[str, Any]:
     except Exception as exc:
         logger.warning("ExtractedPlace validation failed: %s", exc)
         return data
+
+
+def normalize_enrich_response(data: dict[str, Any]) -> dict[str, Any]:
+    if not data:
+        return {}
+    if "aesthetic_note" in data and "aestheticNote" not in data:
+        data = {**data, "aestheticNote": data["aesthetic_note"]}
+    return validate_extracted_place(data)
+
+
+def merge_enrich_into_place(place: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    normalized = normalize_enrich_response(data)
+    if not normalized:
+        return place
+    merged = {**place}
+    for key in ("description", "aestheticNote", "tags", "category", "confidence"):
+        value = normalized.get(key)
+        if value:
+            merged[key] = value
+    return merged

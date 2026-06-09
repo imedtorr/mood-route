@@ -17,6 +17,17 @@ const moods = ["Minimal", "Neon", "Cozy", "Luxury", "Vintage", "Creative", "Slow
 const intensities = ["Relaxed", "Balanced", "Packed"];
 const INTENSITY_CAP: Record<string, number> = { Relaxed: 3, Balanced: 4, Packed: 5 };
 
+function capHint(days: number, intensity: string, poolLength: number): string {
+  const packedCapacity = days * INTENSITY_CAP.Packed;
+  if (intensity !== "Packed" && poolLength <= packedCapacity) {
+    return "To include more places, set intensity to Packed.";
+  }
+  if (poolLength > packedCapacity) {
+    return "To include more places, increase trip length.";
+  }
+  return "To include more places, increase trip length or set intensity to Packed.";
+}
+
 function TripBuilder() {
   const navigate = useNavigate();
   const { workspace, aesthetic } = useApp();
@@ -41,9 +52,12 @@ function TripBuilder() {
   );
   const pool = routable.length > 0 ? routable : places;
   const intensityCap = INTENSITY_CAP[intensity] ?? 4;
+  const itineraryCap = days * intensityCap;
+  const estimate = pool.length === 0 ? 0 : Math.min(pool.length, itineraryCap);
   const stopsPerDay =
-    pool.length === 0 ? 0 : Math.min(intensityCap, Math.max(2, Math.floor(pool.length / days)));
-  const estimate = pool.length === 0 ? 0 : Math.min(pool.length, days * stopsPerDay);
+    estimate === 0 ? 0 : Math.min(intensityCap, Math.ceil(estimate / days));
+  const isCappedByTrip = pool.length > 0 && estimate < pool.length;
+  const excludedFromPool = places.length - pool.length;
 
   async function handleGenerate() {
     try {
@@ -183,12 +197,29 @@ function TripBuilder() {
             <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
               Estimated selection
             </div>
-            <div className="mt-1 font-serif text-3xl">{estimate} places</div>
+            <div className="mt-1 font-serif text-3xl">
+              {isCappedByTrip
+                ? `${estimate} of ${pool.length} places`
+                : `${estimate} place${estimate === 1 ? "" : "s"}`}
+            </div>
             <p className="mt-1 text-xs text-muted-foreground">
               {pool.length === 0
                 ? "Add places to your knowledge base to build an itinerary."
-                : `From ${pool.length} saved place${pool.length === 1 ? "" : "s"} in ${workspace.destination}.`}
+                : isCappedByTrip
+                  ? `Your ${days}-day ${intensity} itinerary fits ~${stopsPerDay} stop${stopsPerDay === 1 ? "" : "s"} per day (max ${itineraryCap}). ${pool.length} saved place${pool.length === 1 ? "" : "s"} available in ${workspace.destination}.`
+                  : `All ${pool.length} saved place${pool.length === 1 ? "" : "s"} in ${workspace.destination} can be included.`}
             </p>
+            {isCappedByTrip && (
+              <p className="mt-2 rounded-lg bg-muted/60 px-3 py-2 text-[11px] text-muted-foreground">
+                {capHint(days, intensity, pool.length)}
+              </p>
+            )}
+            {excludedFromPool > 0 && (
+              <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-400">
+                {excludedFromPool} saved place{excludedFromPool === 1 ? "" : "s"} excluded — low
+                confidence or needs recheck.
+              </p>
+            )}
 
             <div className="mt-4 space-y-2 text-xs">
               <Row label="Trip length" value={`${days} days`} />

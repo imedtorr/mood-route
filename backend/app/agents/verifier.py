@@ -56,6 +56,7 @@ async def verify_places(
     places: list[PlaceModel],
     *,
     check_duplicates: bool = False,
+    run_id: str | None = None,
 ) -> list[ReviewModel]:
     reviews: list[ReviewModel] = []
     merged = 0
@@ -142,5 +143,6 @@ async def verify_places(
         tools=["merge_duplicates", "verify_place_status"],
         input_preview=f"{len(active)} places",
         output_preview=f"{merged} duplicates, {flagged} flagged for review",
+        run_id=run_id,
     )
     return reviews

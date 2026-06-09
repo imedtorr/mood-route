@@ -149,6 +149,14 @@ class TripGenerateRequest(BaseModel):
     aestheticMode: bool = False
 
 
+class ItineraryStopActionRequest(BaseModel):
+    action: Literal["remove", "move", "replace"]
+    day: int = Field(ge=1)
+    stopN: int = Field(ge=1)
+    targetDay: int | None = Field(default=None, ge=1)
+    placeId: str | None = None
+
+
 class ReviewActionRequest(BaseModel):
     action: Literal["confirm", "edit", "merge", "reject"]
     edits: dict | None = None

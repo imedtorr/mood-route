@@ -1,4 +1,5 @@
 import asyncio
+import math
 from collections import defaultdict
 
 from sqlalchemy.orm import Session
@@ -80,6 +81,8 @@ async def _ensure_coordinates_for_places(
     db: Session,
     workspace_id: str,
     places: list[PlaceModel],
+    *,
+    run_id: str | None = None,
 ) -> int:
     geocoded = 0
     for index, place in enumerate(places):
@@ -88,7 +91,7 @@ async def _ensure_coordinates_for_places(
         if index > 0:
             await asyncio.sleep(1.1)
         before = place.lat
-        await ensure_place_geocoded(db, place, workspace_id)
+        await ensure_place_geocoded(db, place, workspace_id, run_id=run_id)
         if place.lat is not None and before is None:
             geocoded += 1
     if geocoded:
@@ -102,6 +105,7 @@ async def _ensure_coordinates_for_places(
             tools=["geocode_place"],
             input_preview=f"{len(places)} candidates",
             output_preview=f"{geocoded} newly geocoded",
+            run_id=run_id,
         )
     return geocoded
 
@@ -111,8 +115,10 @@ async def generate_itinerary(
     workspace_id: str,
     places: list[PlaceModel],
     req: TripGenerateRequest,
+    *,
+    run_id: str | None = None,
 ) -> tuple[list[ItineraryDay], SourcesSummary, str]:
-    await _ensure_coordinates_for_places(db, workspace_id, places)
+    await _ensure_coordinates_for_places(db, workspace_id, places, run_id=run_id)
 
     routable = [
         place for place in places
@@ -122,14 +128,15 @@ async def generate_itinerary(
         routable = [place for place in places if _has_coordinates(place)]
 
     intensity_cap = {"Relaxed": 3, "Balanced": 4, "Packed": 5}[req.intensity]
-    stops_per_day = min(intensity_cap, max(2, len(routable) // req.days))
+    target_count = min(len(routable), req.days * intensity_cap)
+    stops_per_day = min(intensity_cap, max(1, math.ceil(target_count / req.days)))
 
     scored = sorted(routable, key=lambda p: _score_place(p, req), reverse=True)
     rag_ids = {pid for pid, _ in search_places(workspace_id, " ".join(req.moods or ["aesthetic travel"]), n=8)}
     selected: list[PlaceModel] = []
     seen_titles: set[str] = set()
     for p in scored:
-        if len(selected) >= req.days * stops_per_day:
+        if len(selected) >= target_count:
             break
         key = p.title.lower()
         if key in seen_titles:
@@ -137,12 +144,12 @@ async def generate_itinerary(
         seen_titles.add(key)
         selected.append(p)
 
-    if len(selected) < req.days * 2:
+    if len(selected) < target_count:
         for place in routable:
             if place.id not in {item.id for item in selected} and place.title.lower() not in seen_titles:
                 selected.append(place)
                 seen_titles.add(place.title.lower())
-            if len(selected) >= req.days * stops_per_day:
+            if len(selected) >= target_count:
                 break
 
     by_district: dict[str, list[PlaceModel]] = defaultdict(list)
@@ -256,6 +263,7 @@ async def generate_itinerary(
         tools=["cluster_geo", "rag_search", "score_route"],
         input_preview=f"{len(selected)} candidates",
         output_preview=f"{req.days} days × ~{stops_per_day} stops",
+        run_id=run_id,
     )
 
     return days, sources, summary

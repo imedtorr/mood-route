@@ -11,21 +11,29 @@ from app.agents.graph import run_trip_generation
 from app.config import settings
 from app.db.database import SessionLocal, get_db
 from app.db.models import (
-    AgentEventModel,
     ItineraryModel,
     PlaceModel,
     ReviewModel,
     UploadModel,
     WorkspaceModel,
 )
-from app.agents.researcher import ensure_place_geocoded
+from app.agents.researcher import ensure_place_geocoded, enrich_place_with_gigachat
+from app.services.gigachat import gigachat_service
 from app.pipelines.ingest import TERMINAL_UPLOAD_STATUSES, run_ingest_pipeline
 from app.rag.store import search_places, upsert_place, delete_place
+from app.services.agent_log import get_latest_run_events
 from app.services.countries import country_to_flag, default_trip_name
+from app.services.uploads import (
+    resolve_reviews_for_place,
+    try_complete_upload_review,
+    try_complete_uploads_for_places,
+)
+from app.services.itinerary_edit import apply_stop_action
 from app.services.workspaces import delete_workspace, touch_workspace
 
 from app.schemas import (
     ItineraryResponse,
+    ItineraryStopActionRequest,
     Place,
     PlaceSearchResult,
     PlaceUpdate,
@@ -70,6 +78,7 @@ def get_place_or_404(db: Session, workspace_id: str, place_id: str) -> PlaceMode
 
 
 def permanently_remove_place(db: Session, workspace_id: str, place: PlaceModel) -> None:
+    upload_id = place.upload_id
     delete_place(workspace_id, place.id)
     reviews = db.query(ReviewModel).filter(
         ReviewModel.workspace_id == workspace_id,
@@ -80,6 +89,8 @@ def permanently_remove_place(db: Session, workspace_id: str, place: PlaceModel) 
             review.resolved = True
             db.add(review)
     db.delete(place)
+    if upload_id:
+        try_complete_upload_review(db, workspace_id, upload_id)
 
 
 PLACE_EDIT_FIELDS = {
@@ -172,6 +183,7 @@ def list_places(
         q = q.filter(PlaceModel.category == category)
     if verification and verification != "All":
         q = q.filter(PlaceModel.verification == verification)
+    q = q.order_by(PlaceModel.created_at.desc())
     return places_to_schema(db, q.all())
 
 
@@ -211,7 +223,13 @@ async def update_place(
     place = get_place_or_404(db, workspace_id, place_id)
     edits = body.model_dump(exclude_unset=True)
     apply_place_edits(place, edits)
+    resolve_reviews_for_place(db, workspace_id, place_id)
+    if place.verification != "Verified":
+        place.verification = "Verified"
+        place.confidence = max(place.confidence, 0.8)
     db.add(place)
+    if place.upload_id:
+        try_complete_upload_review(db, workspace_id, place.upload_id)
     touch_workspace(db, workspace_id)
     db.commit()
     db.refresh(place)
@@ -219,6 +237,25 @@ async def update_place(
         await ensure_place_geocoded(db, place, workspace_id, force=True)
     else:
         upsert_place(place)
+    db.refresh(place)
+    return places_to_schema(db, [place])[0]
+
+
+@router.post("/workspaces/{workspace_id}/places/{place_id}/enrich", response_model=Place)
+async def enrich_place_endpoint(
+    workspace_id: str,
+    place_id: str,
+    db: Session = Depends(get_db),
+):
+    ws = get_workspace_or_404(db, workspace_id)
+    place = get_place_or_404(db, workspace_id, place_id)
+    if not gigachat_service.available:
+        raise HTTPException(
+            status_code=503,
+            detail="GigaChat не настроен. Добавьте GIGACHAT_CREDENTIALS в .env",
+        )
+    place = await enrich_place_with_gigachat(db, place, workspace_id, ws.destination)
+    touch_workspace(db, workspace_id)
     db.refresh(place)
     return places_to_schema(db, [place])[0]
 
@@ -293,6 +330,16 @@ def list_uploads(workspace_id: str, db: Session = Depends(get_db)):
     uploads = db.query(UploadModel).filter(UploadModel.workspace_id == workspace_id).order_by(
         UploadModel.created_at.desc()
     ).all()
+    healed = any(
+        try_complete_upload_review(db, workspace_id, u.id)
+        for u in uploads
+        if u.status == "Awaiting review"
+    )
+    if healed:
+        db.commit()
+        uploads = db.query(UploadModel).filter(UploadModel.workspace_id == workspace_id).order_by(
+            UploadModel.created_at.desc()
+        ).all()
     place_ids_map = _place_ids_by_upload(db, workspace_id, [u.id for u in uploads])
     return [upload_to_schema(u, place_ids_map.get(u.id, [])) for u in uploads]
 
@@ -495,6 +542,7 @@ def review_action(
 
     review.resolved = True
     db.add(review)
+    try_complete_uploads_for_places(db, workspace_id, review.place_ids)
     touch_workspace(db, workspace_id)
     db.commit()
     return {"ok": True}
@@ -565,14 +613,29 @@ def latest_trip(workspace_id: str, db: Session = Depends(get_db)):
     return itinerary_to_schema(it)
 
 
+@router.patch("/workspaces/{workspace_id}/trips/latest", response_model=ItineraryResponse)
+def patch_itinerary_stop(
+    workspace_id: str,
+    body: ItineraryStopActionRequest,
+    db: Session = Depends(get_db),
+):
+    get_workspace_or_404(db, workspace_id)
+    it = db.query(ItineraryModel).filter(
+        ItineraryModel.workspace_id == workspace_id,
+        ItineraryModel.is_latest == True,
+    ).order_by(ItineraryModel.created_at.desc()).first()
+    if not it:
+        raise HTTPException(status_code=404, detail="No itinerary yet")
+
+    apply_stop_action(db, it, body)
+    db.add(it)
+    touch_workspace(db, workspace_id)
+    db.commit()
+    return itinerary_to_schema(it)
+
+
 @router.get("/workspaces/{workspace_id}/agent-events")
 def list_agent_events(workspace_id: str, db: Session = Depends(get_db)):
     get_workspace_or_404(db, workspace_id)
-    events = (
-        db.query(AgentEventModel)
-        .filter(AgentEventModel.workspace_id == workspace_id)
-        .order_by(AgentEventModel.created_at.desc())
-        .limit(50)
-        .all()
-    )
+    events = get_latest_run_events(db, workspace_id)
     return [agent_event_to_schema(e) for e in events]

@@ -72,7 +72,7 @@ export function AgentPanel() {
               <span className="font-medium text-foreground">
                 {workspace.flag} {workspace.name}
               </span>{" "}
-              · live workflow
+              · latest workflow
             </p>
           </div>
 

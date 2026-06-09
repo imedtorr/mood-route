@@ -6,8 +6,12 @@ from typing import Any
 
 from app.config import settings
 from app.domain.places import is_place_specific
-from app.prompts.enrichment import PLACE_CARD_ENRICH_PROMPT, build_route_narrative_prompt
-from app.services.llm_utils import LLMTask, parse_json
+from app.prompts.enrichment import (
+    PLACE_CARD_ENRICH_PROMPT,
+    PLACE_CARD_WEB_ENRICH_PROMPT,
+    build_route_narrative_prompt,
+)
+from app.services.llm_utils import LLMTask, merge_enrich_into_place, parse_json
 
 logger = logging.getLogger(__name__)
 
@@ -62,13 +66,7 @@ class GigaChatService:
             task=LLMTask.PLACE_ENRICH,
         )
         data = parse_json(response, context="place_enrich")
-        if not data.get("title"):
-            return place
-        merged = {**place}
-        for key in ("description", "aestheticNote", "tags", "category", "confidence"):
-            if data.get(key):
-                merged[key] = data[key]
-        return merged
+        return merge_enrich_into_place(place, data)
 
     async def enrich_place_card_async(
         self,
@@ -76,6 +74,39 @@ class GigaChatService:
         destination_hint: str = "",
     ) -> dict[str, Any]:
         return await asyncio.to_thread(self.enrich_place_card, place, destination_hint)
+
+    def enrich_place_card_with_web(
+        self,
+        place: dict[str, Any],
+        web_context: str = "",
+        destination_hint: str = "",
+    ) -> dict[str, Any]:
+        if not self._client:
+            return place
+        context = json.dumps(place, ensure_ascii=False)
+        hint = f"\nTrip destination: {destination_hint}" if destination_hint else ""
+        web_block = f"\n\nWeb search results:\n{web_context}" if web_context.strip() else ""
+        prompt = f"{PLACE_CARD_WEB_ENRICH_PROMPT}{hint}\n\nRaw data:\n{context}{web_block}"
+        response = self.chat(
+            prompt,
+            system="You enrich travel place cards using web research. Reply with JSON only.",
+            task=LLMTask.PLACE_ENRICH,
+        )
+        data = parse_json(response, context="place_web_enrich")
+        return merge_enrich_into_place(place, data)
+
+    async def enrich_place_card_with_web_async(
+        self,
+        place: dict[str, Any],
+        web_context: str = "",
+        destination_hint: str = "",
+    ) -> dict[str, Any]:
+        return await asyncio.to_thread(
+            self.enrich_place_card_with_web,
+            place,
+            web_context,
+            destination_hint,
+        )
 
     def generate_route_narrative(
         self,

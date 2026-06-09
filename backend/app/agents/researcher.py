@@ -5,8 +5,9 @@ from sqlalchemy.orm import Session
 from app.domain.places import is_place_specific
 from app.db.models import PlaceModel, ReviewModel
 from app.rag.store import search_places, upsert_place
-from app.services.agent_log import log_agent_event
+from app.services.agent_log import log_agent_event, new_run_id
 from app.services.geocoding import geocode_place
+from app.services.gigachat import gigachat_service
 from app.services.tavily import tavily_service
 
 
@@ -28,6 +29,7 @@ async def ensure_place_geocoded(
     workspace_id: str | None = None,
     *,
     force: bool = False,
+    run_id: str | None = None,
 ) -> PlaceModel:
     if not force and place.lat is not None and place.lng is not None:
         return place
@@ -61,11 +63,96 @@ async def ensure_place_geocoded(
                 tools=["geocode_place"],
                 input_preview=place.title,
                 output_preview=f"{place.address or district}, lat={place.lat:.4f}",
+                run_id=run_id,
             )
     return place
 
 
-async def enrich_place(db: Session, place: PlaceModel, workspace_id: str) -> PlaceModel:
+def _place_to_dict(place: PlaceModel) -> dict:
+    return {
+        "title": place.title,
+        "city": place.city,
+        "country": place.country,
+        "category": place.category,
+        "tags": place.tags,
+        "description": place.description,
+        "aestheticNote": place.aesthetic_note,
+        "confidence": place.confidence,
+        "address": place.address,
+        "reason": place.reason,
+    }
+
+
+def _apply_enriched_fields(place: PlaceModel, enriched: dict) -> None:
+    aesthetic = enriched.get("aestheticNote") or enriched.get("aesthetic_note")
+    if enriched.get("description"):
+        place.description = enriched["description"]
+    if aesthetic:
+        place.aesthetic_note = aesthetic
+    if enriched.get("tags"):
+        place.tags = enriched["tags"]
+    if enriched.get("category"):
+        place.category = enriched["category"]
+    if enriched.get("confidence"):
+        place.confidence = float(enriched["confidence"])
+
+
+async def enrich_place_with_gigachat(
+    db: Session,
+    place: PlaceModel,
+    workspace_id: str,
+    destination_hint: str = "",
+    *,
+    run_id: str | None = None,
+) -> PlaceModel:
+    run_id = run_id or new_run_id()
+    tools: list[str] = ["gigachat_enrich"]
+    place_dict = _place_to_dict(place)
+
+    web_context = ""
+    if tavily_service.available:
+        query = f"{place.title} {place.city} {place.country}"
+        results = tavily_service.search(query, max_results=3)
+        if results:
+            tools.append("tavily_search")
+            web_context = "\n".join(
+                f"- {r.get('title', '')}: {r.get('content', '')[:400]}"
+                for r in results
+            )
+
+    enriched = await gigachat_service.enrich_place_card_with_web_async(
+        place_dict,
+        web_context,
+        destination_hint,
+    )
+    _apply_enriched_fields(place, enriched)
+    db.add(place)
+    db.commit()
+    db.refresh(place)
+
+    log_agent_event(
+        db,
+        workspace_id,
+        "Researcher Agent",
+        "Success",
+        f"GigaChat enriched {place.title}.",
+        confidence=place.confidence,
+        tools=tools,
+        input_preview=place.title,
+        output_preview=(place.description[:120] + "…") if len(place.description) > 120 else place.description,
+        run_id=run_id,
+    )
+
+    return await enrich_place(db, place, workspace_id, run_id=run_id)
+
+
+async def enrich_place(
+    db: Session,
+    place: PlaceModel,
+    workspace_id: str,
+    *,
+    run_id: str | None = None,
+) -> PlaceModel:
     tools: list[str] = ["geocode_place"]
     place_dict = {
         "title": place.title,
@@ -92,6 +179,7 @@ async def enrich_place(db: Session, place: PlaceModel, workspace_id: str) -> Pla
             tools=["verify_place_status"],
             input_preview=place.title,
             output_preview="Unverified — needs manual review",
+            run_id=run_id,
         )
     else:
         verification = place.verification
@@ -107,6 +195,7 @@ async def enrich_place(db: Session, place: PlaceModel, workspace_id: str) -> Pla
             tools=["verify_place_status"],
             input_preview=place.title,
             output_preview="Saved as Unverified, will retry later.",
+            run_id=run_id,
         )
 
     geocode_title = _geocode_title(place)
@@ -149,6 +238,7 @@ async def enrich_place(db: Session, place: PlaceModel, workspace_id: str) -> Pla
         tools=tools,
         input_preview=place.title,
         output_preview=f"{place.verification}, address={place.address or place.district}",
+        run_id=run_id,
     )
     return place
 

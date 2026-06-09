@@ -360,7 +360,7 @@ def _heuristic_extract(
             r"(?:город|town)\s+([A-Z][A-Za-z][\w'-]{1,35})",
             r"(?:заведение называется|called|named)\s+([A-Za-zА-Яа-я0-9][\w\s&'.-]{2,40})",
             r"([A-Za-z][\w\s&'.-]{2,30})\s+(?:cafe|café|coffee|roastery|bakery|restaurant|bar)",
-            r"(?:matcha|cafe|coffee|museum|park|market)\s+[\w\s&'.-]{3,40}",
+            r"((?:matcha|cafe|coffee|museum|park|market)\s+[\w\s&'.-]{3,40})",
         ):
             match = re.search(pattern, combined, re.I)
             if match:

@@ -3,9 +3,14 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
 import { PlaceCard } from "@/components/place-card";
-import { useDeletePlace, useGeocodePlace, usePlaces, useUpdatePlace } from "@/lib/api/hooks";
-import { resolveImageUrl } from "@/lib/api/client";
-import { useApp } from "@/lib/app-context";
+import {
+  useDeletePlace,
+  useEnrichPlace,
+  useGeocodePlace,
+  usePlaces,
+  useUpdatePlace,
+} from "@/lib/api/hooks";
+import { ApiError, resolveImageUrl } from "@/lib/api/client";
 import type { Category, Place } from "@/lib/types";
 import {
   VerificationBadge,
@@ -15,11 +20,13 @@ import {
 } from "@/components/badges";
 import {
   AlertTriangle,
+  ChevronDown,
   ExternalLink,
   Loader2,
   MapPinned,
   Pencil,
   Search,
+  Sparkles,
   Trash2,
   X,
   MapPin,
@@ -46,30 +53,22 @@ export const Route = createFileRoute("/places")({
   component: PlacesPage,
 });
 
-const cats = [
-  "All",
-  "Cafe",
-  "Restaurant",
-  "Museum",
-  "Park",
-  "Viewpoint",
-  "Market",
-  "Neighborhood",
-  "Shopping",
-];
-const tags = [
-  "All",
-  "Minimal",
-  "Cozy",
-  "Coffee Culture",
-  "Architecture",
-  "Hidden Gem",
-  "Vintage",
-  "Slow Travel",
-  "Photography",
-  "Neon",
-];
 const verifs = ["All", "Verified", "Unverified", "Needs Recheck"];
+
+const knownAestheticTags = [
+  "Architecture",
+  "Coffee Culture",
+  "Cozy",
+  "Creative",
+  "Hidden Gem",
+  "Luxury",
+  "Matcha",
+  "Minimal",
+  "Neon",
+  "Photography",
+  "Slow Travel",
+  "Vintage",
+] as const;
 
 function hasMapCoordinates(place: Place): boolean {
   return place.lat != null && place.lng != null;
@@ -91,16 +90,24 @@ const placeCategories: Category[] = [
 ];
 
 function PlacesPage() {
-  const { workspace } = useApp();
   const { placeId } = Route.useSearch();
   const navigate = Route.useNavigate();
-  const [city, setCity] = useState("All");
   const [cat, setCat] = useState("All");
   const [tag, setTag] = useState("All");
   const [verif, setVerif] = useState("All");
   const [active, setActive] = useState<Place | null>(null);
 
   const { data: allPlaces = [] } = usePlaces();
+
+  const categoryOptions = useMemo(() => ["All", ...placeCategories], []);
+
+  const tagOptions = useMemo(() => {
+    const merged = new Set<string>([
+      ...knownAestheticTags,
+      ...allPlaces.flatMap((p) => p.tags),
+    ]);
+    return ["All", ...Array.from(merged).sort((a, b) => a.localeCompare(b))];
+  }, [allPlaces]);
 
   useEffect(() => {
     if (!placeId || !allPlaces.length) return;
@@ -115,28 +122,15 @@ function PlacesPage() {
     });
   }, [placeId, allPlaces]);
 
-  const cities = useMemo(() => {
-    const options = new Set<string>(["All"]);
-    const wsCity = workspace.city || workspace.destination.split(",")[0]?.trim();
-    if (wsCity) options.add(wsCity);
-    for (const p of allPlaces) options.add(p.city);
-    return Array.from(options);
-  }, [allPlaces, workspace.destination]);
-
-  useEffect(() => {
-    if (city !== "All" && !cities.includes(city)) setCity("All");
-  }, [city, cities]);
-
   const filtered = useMemo(
     () =>
       allPlaces.filter((p) => {
-        if (city !== "All" && p.city !== city) return false;
         if (cat !== "All" && p.category !== cat) return false;
         if (verif !== "All" && p.verification !== verif) return false;
         if (tag !== "All" && !p.tags.includes(tag)) return false;
         return true;
       }),
-    [allPlaces, city, cat, verif, tag],
+    [allPlaces, cat, verif, tag],
   );
 
   return (
@@ -147,10 +141,9 @@ function PlacesPage() {
         description="Every place your AI agents extracted from saved inspiration — structured, tagged, and verifiable."
       />
 
-      <div className="sticky top-14 z-[5] flex flex-wrap gap-2 border-b border-border bg-background/90 px-8 py-3 backdrop-blur">
-        <FilterGroup label="City" value={city} onChange={setCity} options={cities} />
-        <FilterGroup label="Category" value={cat} onChange={setCat} options={cats} />
-        <FilterGroup label="Aesthetic" value={tag} onChange={setTag} options={tags} />
+      <div className="flex flex-wrap items-center gap-x-8 gap-y-3 border-b border-border bg-background px-8 py-3">
+        <FilterGroup label="Category" value={cat} onChange={setCat} options={categoryOptions} />
+        <FilterGroup label="Aesthetic" value={tag} onChange={setTag} options={tagOptions} />
         <FilterGroup label="Status" value={verif} onChange={setVerif} options={verifs} />
         <div className="ml-auto text-xs text-muted-foreground">{filtered.length} places</div>
       </div>
@@ -191,19 +184,22 @@ function FilterGroup({
   options: string[];
 }) {
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-2">
       <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
         {label}
       </span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="rounded-md border border-border bg-card px-2 py-1 text-xs outline-none hover:bg-muted"
-      >
-        {options.map((o) => (
-          <option key={o}>{o}</option>
-        ))}
-      </select>
+      <div className="relative">
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="appearance-none rounded-md border border-border bg-card py-1 pl-3 pr-8 text-xs outline-none hover:bg-muted"
+        >
+          {options.map((o) => (
+            <option key={o}>{o}</option>
+          ))}
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+      </div>
     </div>
   );
 }
@@ -220,6 +216,7 @@ function PlaceDrawer({
   const updatePlace = useUpdatePlace();
   const deletePlace = useDeletePlace();
   const geocodePlace = useGeocodePlace();
+  const enrichPlace = useEnrichPlace();
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [title, setTitle] = useState(place.title);
@@ -272,6 +269,20 @@ function PlaceDrawer({
       }
     } catch {
       toast.error("Ошибка при поиске адреса");
+    }
+  }
+
+  async function handleEnrich() {
+    try {
+      const updated = await enrichPlace.mutateAsync(place.id);
+      onChange(updated);
+      toast.success("Карточка обогащена через GigaChat");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 503) {
+        toast.error("GigaChat не настроен — добавьте GIGACHAT_CREDENTIALS в .env");
+      } else {
+        toast.error("Не удалось обогатить карточку");
+      }
     }
   }
 
@@ -403,7 +414,7 @@ function PlaceDrawer({
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <div className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
-                        Адрес
+                        Address
                       </div>
                       <p className="mt-1 text-sm leading-relaxed">
                         {place.address || "Address not found — enter manually or search"}
@@ -422,21 +433,46 @@ function PlaceDrawer({
                       ) : (
                         <Search className="h-3.5 w-3.5" />
                       )}
-                      <span className="ml-1.5">Найти</span>
+                      <span className="ml-1.5">Find</span>
                     </Button>
                   </div>
                 </div>
-                <div>
-                  <div className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
-                    Extracted description
+                <div className="rounded-xl border border-border bg-muted/40 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+                        Description
+                      </div>
+                      <p className="mt-1 text-sm leading-relaxed">
+                        {place.description || "No description yet — click Enrich"}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0"
+                      onClick={handleEnrich}
+                      disabled={enrichPlace.isPending}
+                    >
+                      {enrichPlace.isPending ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-3.5 w-3.5" />
+                      )}
+                      <span className="ml-1.5">Enrich</span>
+                    </Button>
                   </div>
-                  <p className="mt-1 text-sm leading-relaxed">{place.description}</p>
                 </div>
                 <div className="rounded-xl bg-muted/60 p-3">
                   <div className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
                     Aesthetic note
                   </div>
-                  <p className="mt-1 font-serif text-base italic">&ldquo;{place.aestheticNote}&rdquo;</p>
+                  <p className="mt-1 font-serif text-base italic">
+                    {place.aestheticNote
+                      ? `\u201C${place.aestheticNote}\u201D`
+                      : "No aesthetic note yet — click Enrich"}
+                  </p>
                 </div>
                 <div>
                   <div className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">

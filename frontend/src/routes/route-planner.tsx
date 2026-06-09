@@ -5,8 +5,9 @@ import { useLatestTrip } from "@/lib/api/hooks";
 import { resolveImageUrl } from "@/lib/api/client";
 import { useApp } from "@/lib/app-context";
 import { itinerary as mockItinerary } from "@/lib/mock-data";
+import { StopActionsMenu } from "@/components/stop-actions-menu";
 import { VerificationBadge, SourceBadge, CategoryBadge } from "@/components/badges";
-import { Clock, MapPin, MoreHorizontal, Sparkles } from "lucide-react";
+import { Clock, MapPin, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const MapPanel = lazy(() =>
@@ -79,7 +80,7 @@ function RoutePlanner() {
           )}
           <ol className="relative space-y-4">
             {day.stops.map((s, i) => (
-              <li key={s.n} className="relative">
+              <li key={`${day.day}-${i}-${s.placeId ?? s.title}`} className="relative">
                 {i < day.stops.length - 1 && (
                   <span className="absolute left-[19px] top-12 h-[calc(100%+8px)] w-px bg-border" />
                 )}
@@ -87,10 +88,16 @@ function RoutePlanner() {
                   <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-border bg-card font-serif text-lg shadow-sm">
                     {s.n}
                   </div>
-                  <article className="flex-1 overflow-hidden rounded-2xl border border-border bg-card shadow-[var(--shadow-card)]">
-                    <div className="grid md:grid-cols-[200px_1fr]">
-                      <img src={resolveImageUrl(s.image)} alt="" className="h-full w-full object-cover md:h-44" />
-                      <div className="space-y-3 p-5">
+                  <article className="flex flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-[var(--shadow-card)] md:grid md:grid-cols-[200px_1fr] md:items-start">
+                    <div className="relative aspect-[16/9] w-full shrink-0 overflow-hidden md:aspect-[4/5]">
+                      <img
+                        src={resolveImageUrl(s.image)}
+                        alt={s.title}
+                        loading="lazy"
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                    <div className="space-y-3 p-5">
                         <div className="flex items-start justify-between gap-2">
                           <div>
                             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -105,12 +112,15 @@ function RoutePlanner() {
                             </div>
                             <h3 className="mt-1 font-serif text-2xl leading-tight">{s.title}</h3>
                           </div>
-                          <button
-                            type="button"
-                            className="rounded-md p-1 text-muted-foreground hover:bg-muted"
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </button>
+                          <StopActionsMenu
+                            stop={s}
+                            dayNumber={day.day}
+                            days={days}
+                            onMovedToDay={(targetDay) => {
+                              const idx = days.findIndex((d) => d.day === targetDay);
+                              if (idx >= 0) setDayIdx(idx);
+                            }}
+                          />
                         </div>
                         <div className="flex flex-wrap items-center gap-1.5">
                           <CategoryBadge category={s.category} />
@@ -135,7 +145,6 @@ function RoutePlanner() {
                           <span className="text-muted-foreground">{s.reason}</span>
                         </div>
                       </div>
-                    </div>
                   </article>
                 </div>
               </li>
