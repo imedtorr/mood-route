@@ -88,13 +88,13 @@ function RoutePlanner() {
                   <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-border bg-card font-serif text-lg shadow-sm">
                     {s.n}
                   </div>
-                  <article className="flex flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-[var(--shadow-card)] md:grid md:grid-cols-[200px_1fr] md:items-start">
-                    <div className="relative aspect-[16/9] w-full shrink-0 overflow-hidden md:aspect-[4/5]">
+                  <article className="flex flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-[var(--shadow-card)] md:grid md:grid-cols-[200px_1fr]">
+                    <div className="relative aspect-[16/9] w-full shrink-0 overflow-hidden md:aspect-auto md:h-full md:min-h-[200px]">
                       <img
                         src={resolveImageUrl(s.image)}
                         alt={s.title}
                         loading="lazy"
-                        className="h-full w-full object-cover"
+                        className="absolute inset-0 h-full w-full object-cover object-center"
                       />
                     </div>
                     <div className="space-y-3 p-5">

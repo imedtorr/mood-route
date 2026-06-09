@@ -24,6 +24,7 @@ from app.rag.store import search_places, upsert_place, delete_place
 from app.services.agent_log import get_latest_run_events
 from app.services.countries import country_to_flag, default_trip_name
 from app.services.uploads import (
+    ensure_verification_reviews,
     resolve_reviews_for_place,
     try_complete_upload_review,
     try_complete_uploads_for_places,
@@ -485,6 +486,7 @@ async def create_file_upload(
 @router.get("/workspaces/{workspace_id}/review", response_model=list[ReviewCard])
 def list_reviews(workspace_id: str, db: Session = Depends(get_db)):
     get_workspace_or_404(db, workspace_id)
+    ensure_verification_reviews(db, workspace_id)
     reviews = db.query(ReviewModel).filter(
         ReviewModel.workspace_id == workspace_id,
         ReviewModel.resolved == False,

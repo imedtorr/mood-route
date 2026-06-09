@@ -1,6 +1,45 @@
 from sqlalchemy.orm import Session
 
+from app.agents.researcher import create_review_for_place
 from app.db.models import PlaceModel, ReviewModel, UploadModel
+
+_PENDING_VERIFICATION = ("Unverified", "Needs Recheck")
+
+
+def ensure_verification_reviews(db: Session, workspace_id: str) -> None:
+    unresolved = db.query(ReviewModel).filter(
+        ReviewModel.workspace_id == workspace_id,
+        ReviewModel.resolved == False,
+    ).all()
+    covered_place_ids = {pid for review in unresolved for pid in review.place_ids}
+
+    pending = db.query(PlaceModel).filter(
+        PlaceModel.workspace_id == workspace_id,
+        PlaceModel.status == "active",
+        PlaceModel.verification.in_(_PENDING_VERIFICATION),
+    ).all()
+
+    for place in pending:
+        if place.id in covered_place_ids:
+            continue
+        if place.verification == "Needs Recheck":
+            create_review_for_place(
+                db,
+                workspace_id,
+                place,
+                "Possible closed/outdated place",
+                "Recommend manual recheck before adding to route.",
+                "Confirm",
+            )
+        else:
+            create_review_for_place(
+                db,
+                workspace_id,
+                place,
+                "Unverified place",
+                "This place has not been verified yet. Please confirm or edit details.",
+                "Confirm",
+            )
 
 
 def resolve_reviews_for_place(db: Session, workspace_id: str, place_id: str) -> None:

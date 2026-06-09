@@ -15,18 +15,7 @@ export const Route = createFileRoute("/trip-builder")({
 const styles = ["Efficient", "Aesthetic", "Hidden Gems", "Coffee Crawl", "Architecture Focus"];
 const moods = ["Minimal", "Neon", "Cozy", "Luxury", "Vintage", "Creative", "Slow Travel"];
 const intensities = ["Relaxed", "Balanced", "Packed"];
-const INTENSITY_CAP: Record<string, number> = { Relaxed: 3, Balanced: 4, Packed: 5 };
-
-function capHint(days: number, intensity: string, poolLength: number): string {
-  const packedCapacity = days * INTENSITY_CAP.Packed;
-  if (intensity !== "Packed" && poolLength <= packedCapacity) {
-    return "To include more places, set intensity to Packed.";
-  }
-  if (poolLength > packedCapacity) {
-    return "To include more places, increase trip length.";
-  }
-  return "To include more places, increase trip length or set intensity to Packed.";
-}
+const INTENSITY_CAP: Record<string, number> = { Relaxed: 3, Balanced: 4 };
 
 function TripBuilder() {
   const navigate = useNavigate();
@@ -51,12 +40,13 @@ function TripBuilder() {
     (p) => p.verification !== "Needs Recheck" && (p.confidence ?? 0) >= 0.5,
   );
   const pool = routable.length > 0 ? routable : places;
+  const isPacked = intensity === "Packed";
   const intensityCap = INTENSITY_CAP[intensity] ?? 4;
-  const itineraryCap = days * intensityCap;
+  const itineraryCap = isPacked ? pool.length : days * intensityCap;
   const estimate = pool.length === 0 ? 0 : Math.min(pool.length, itineraryCap);
   const stopsPerDay =
-    estimate === 0 ? 0 : Math.min(intensityCap, Math.ceil(estimate / days));
-  const isCappedByTrip = pool.length > 0 && estimate < pool.length;
+    estimate === 0 ? 0 : isPacked ? Math.ceil(estimate / days) : Math.min(intensityCap, Math.ceil(estimate / days));
+  const isCappedByTrip = !isPacked && pool.length > 0 && estimate < pool.length;
   const excludedFromPool = places.length - pool.length;
 
   async function handleGenerate() {
@@ -207,11 +197,13 @@ function TripBuilder() {
                 ? "Add places to your knowledge base to build an itinerary."
                 : isCappedByTrip
                   ? `Your ${days}-day ${intensity} itinerary fits ~${stopsPerDay} stop${stopsPerDay === 1 ? "" : "s"} per day (max ${itineraryCap}). ${pool.length} saved place${pool.length === 1 ? "" : "s"} available in ${workspace.destination}.`
-                  : `All ${pool.length} saved place${pool.length === 1 ? "" : "s"} in ${workspace.destination} can be included.`}
+                  : isPacked
+                    ? `Packed route — all ${pool.length} saved place${pool.length === 1 ? "" : "s"} in ${workspace.destination} (~${stopsPerDay} per day).`
+                    : `All ${pool.length} saved place${pool.length === 1 ? "" : "s"} in ${workspace.destination} can be included.`}
             </p>
             {isCappedByTrip && (
               <p className="mt-2 rounded-lg bg-muted/60 px-3 py-2 text-[11px] text-muted-foreground">
-                {capHint(days, intensity, pool.length)}
+                To include more places, increase trip length or set intensity to Packed.
               </p>
             )}
             {excludedFromPool > 0 && (

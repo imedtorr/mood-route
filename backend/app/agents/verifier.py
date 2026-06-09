@@ -6,7 +6,6 @@ from app.agents.researcher import create_review_for_place
 from app.db.models import PlaceModel, ReviewModel
 from app.rag.embeddings import embed_text
 from app.services.agent_log import log_agent_event
-from app.services.tavily import tavily_service
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
@@ -118,17 +117,18 @@ async def verify_places(
                 )
             )
             flagged += 1
-        elif not tavily_service.available and place.verification == "Unverified":
+        elif place.verification == "Unverified":
             reviews.append(
                 create_review_for_place(
                     db,
                     workspace_id,
                     place,
-                    "Search unavailable — saved as draft",
-                    "Verification tool was unavailable. Saved as Unverified draft.",
+                    "Unverified place",
+                    "This place has not been verified yet. Please confirm or edit details.",
                     "Confirm",
                 )
             )
+            flagged += 1
 
     db.commit()
 

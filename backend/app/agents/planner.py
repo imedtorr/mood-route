@@ -128,9 +128,13 @@ async def generate_itinerary(
     if not routable:
         routable = [place for place in places if _has_coordinates(place)]
 
-    intensity_cap = {"Relaxed": 3, "Balanced": 4, "Packed": 5}[req.intensity]
-    target_count = min(len(routable), req.days * intensity_cap)
-    stops_per_day = min(intensity_cap, max(1, math.ceil(target_count / req.days)))
+    if req.intensity == "Packed":
+        target_count = len(routable)
+        stops_per_day = max(1, math.ceil(target_count / req.days)) if target_count else 0
+    else:
+        intensity_cap = {"Relaxed": 3, "Balanced": 4}[req.intensity]
+        target_count = min(len(routable), req.days * intensity_cap)
+        stops_per_day = min(intensity_cap, max(1, math.ceil(target_count / req.days)))
 
     scored = sorted(routable, key=lambda p: _score_place(p, req), reverse=True)
     rag_ids = {pid for pid, _ in search_places(workspace_id, " ".join(req.moods or ["aesthetic travel"]), n=8)}
