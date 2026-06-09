@@ -1,4 +1,8 @@
-PLACE_CARD_ENRICH_PROMPT = """You polish a travel place card for a knowledge base.
+from app.services.llm_utils import AESTHETIC_TAGS_STR
+
+_TAGS_RULE = f"tags (array of 1-6 values chosen ONLY from: {AESTHETIC_TAGS_STR})"
+
+PLACE_CARD_ENRICH_PROMPT = f"""You polish a travel place card for a knowledge base.
 Given raw extracted data, improve description, aestheticNote, tags, and category.
 
 Rules:
@@ -6,10 +10,11 @@ Rules:
 - Describe ONLY the specific place in title — never write a generic city guide
 - Base description and aestheticNote ONLY on facts in the raw data; do not invent landmarks
 - If raw data lacks detail, keep description short and factual
+- {_TAGS_RULE}
 
 Return JSON with keys: title, city, country, category, tags (array), description, aestheticNote, confidence (0-1)."""
 
-PLACE_CARD_WEB_ENRICH_PROMPT = """You enrich a travel place card for a knowledge base.
+PLACE_CARD_WEB_ENRICH_PROMPT = f"""You enrich a travel place card for a knowledge base.
 Given raw extracted data and optional web search results, write a rich, accurate card.
 
 Rules:
@@ -19,7 +24,7 @@ Rules:
 - If web results are empty or irrelevant, improve only what raw data already supports
 - Do not invent landmarks, addresses, or opening hours not supported by the inputs
 - aestheticNote: one evocative sentence about the visual/mood vibe of this place
-- tags: 3-6 short aesthetic/travel tags (e.g. "Coffee Culture", "Hidden Gem")
+- {_TAGS_RULE}
 - confidence: 0-1 reflecting how well-supported the card is
 
 Return JSON with keys: title, city, country, category, tags (array), description, aestheticNote, confidence (0-1)."""

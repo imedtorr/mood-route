@@ -17,6 +17,7 @@ from app.rag.store import upsert_place
 from app.services.agent_log import log_agent_event, new_run_id
 from app.services.workspaces import touch_workspace
 from app.services.gigachat import gigachat_service
+from app.services.llm_utils import normalize_aesthetic_tags
 
 
 TERMINAL_UPLOAD_STATUSES = frozenset({
@@ -196,7 +197,7 @@ async def run_ingest_pipeline(db: Session, upload_id: str) -> None:
                 reason=f"Extracted from {upload.source} inspiration.",
                 upload_id=upload.id,
             )
-            place.tags = extracted.get("tags", ["Hidden Gem"])
+            place.tags = normalize_aesthetic_tags(extracted.get("tags", ["Hidden Gem"]), allow_custom=False)
             db.add(place)
             places.append(place)
         db.commit()

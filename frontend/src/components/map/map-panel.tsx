@@ -48,7 +48,7 @@ export function MapPanel({ stops }: { stops: ItineraryStop[] }) {
     <div>
       {missingCount > 0 && (
         <div className="border-b border-border bg-warning/10 px-4 py-2 text-xs text-warning">
-          {missingCount} остановок без координат не отображены на карте
+          {missingCount} stops without coordinates not shown on map
         </div>
       )}
       <MapContainer

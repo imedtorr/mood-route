@@ -106,7 +106,7 @@ function RoutePlanner() {
                               <MapPin className="h-3 w-3" /> {s.address || s.district}
                               {(s.lat == null || s.lng == null) && (
                                 <span className="rounded bg-warning/15 px-1.5 py-0.5 text-warning">
-                                  нет координат
+                                  no coordinates
                                 </span>
                               )}
                             </div>

@@ -29,6 +29,7 @@ from app.services.uploads import (
     try_complete_uploads_for_places,
 )
 from app.services.itinerary_edit import apply_stop_action
+from app.services.llm_utils import normalize_aesthetic_tags
 from app.services.workspaces import delete_workspace, touch_workspace
 
 from app.schemas import (
@@ -110,7 +111,7 @@ GEOCODE_TRIGGER_FIELDS = frozenset({"title", "city", "country", "address"})
 def apply_place_edits(place: PlaceModel, edits: dict) -> None:
     for key, val in edits.items():
         if key == "tags" and isinstance(val, list):
-            place.tags = val
+            place.tags = normalize_aesthetic_tags(val, allow_custom=True)
             continue
         attr = PLACE_EDIT_FIELDS.get(key)
         if attr and val is not None:
@@ -252,7 +253,7 @@ async def enrich_place_endpoint(
     if not gigachat_service.available:
         raise HTTPException(
             status_code=503,
-            detail="GigaChat не настроен. Добавьте GIGACHAT_CREDENTIALS в .env",
+            detail="GigaChat is not configured. Add GIGACHAT_CREDENTIALS to .env",
         )
     place = await enrich_place_with_gigachat(db, place, workspace_id, ws.destination)
     touch_workspace(db, workspace_id)

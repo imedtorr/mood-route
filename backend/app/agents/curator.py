@@ -16,6 +16,7 @@ from app.domain.places import (
     parse_destination,
     title_looks_like_city_not_place,
 )
+from app.services.llm_utils import normalize_aesthetic_tags
 from app.services.ocr import extract_text_from_image, normalize_place_name
 from app.services.ollama import ollama_service
 from app.services.tavily import tavily_service
@@ -139,9 +140,7 @@ def _normalize_extracted(
     country = (
         normalize_location(str(data.get("country", "")).strip(), COUNTRY_ALIASES) or default_country
     )
-    tags = data.get("tags") or []
-    if isinstance(tags, str):
-        tags = [tag.strip() for tag in tags.split(",") if tag.strip()]
+    tags = normalize_aesthetic_tags(data.get("tags") or [], allow_custom=False)
     category = str(data.get("category", "Other")).strip() or "Other"
     confidence = float(data.get("confidence", 0.7) or 0.7)
     if not city or not country:
@@ -151,7 +150,7 @@ def _normalize_extracted(
         "city": city,
         "country": country,
         "category": category,
-        "tags": tags or ["Hidden Gem"],
+        "tags": tags,
         "description": str(data.get("description", "")).strip(),
         "aestheticNote": str(data.get("aestheticNote", "")).strip() or "A visually inspiring travel spot.",
         "confidence": confidence,

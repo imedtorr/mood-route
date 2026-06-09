@@ -149,8 +149,8 @@ export const api = {
       if (idx === -1) throw new ApiError(404, "Place not found");
       places[idx] = {
         ...places[idx],
-        description: places[idx].description || "Обогащённое описание места.",
-        aestheticNote: places[idx].aestheticNote || "Уютная атмосфера для неспешной прогулки.",
+        description: places[idx].description || "Enriched place description.",
+        aestheticNote: places[idx].aestheticNote || "A cozy atmosphere for a leisurely stroll.",
         tags: places[idx].tags.length ? places[idx].tags : ["Hidden Gem", "Slow Travel"],
         confidence: Math.max(places[idx].confidence, 0.85),
       };

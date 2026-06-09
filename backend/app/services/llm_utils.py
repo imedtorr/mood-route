@@ -25,6 +25,121 @@ PLACE_CATEGORIES = (
 
 PLACE_CATEGORIES_STR = ", ".join(PLACE_CATEGORIES)
 
+AESTHETIC_TAGS = (
+    "Architecture",
+    "Coffee Culture",
+    "Cozy",
+    "Creative",
+    "Hidden Gem",
+    "Luxury",
+    "Matcha",
+    "Minimal",
+    "Neon",
+    "Photography",
+    "Slow Travel",
+    "Vintage",
+)
+
+AESTHETIC_TAGS_STR = ", ".join(AESTHETIC_TAGS)
+
+_CANONICAL_BY_LOWER = {tag.lower(): tag for tag in AESTHETIC_TAGS}
+
+_AESTHETIC_TAG_ALIASES: dict[str, str] = {
+    "hidden gems": "Hidden Gem",
+    "hidden-gem": "Hidden Gem",
+    "must see": "Hidden Gem",
+    "coffee": "Coffee Culture",
+    "coffee shop": "Coffee Culture",
+    "cafe culture": "Coffee Culture",
+    "dessert cafe": "Coffee Culture",
+    "minimalist": "Minimal",
+    "minimalism": "Minimal",
+    "open concept": "Minimal",
+    "photo": "Photography",
+    "photos": "Photography",
+    "panoramic views": "Photography",
+    "skyline": "Photography",
+    "cityscape": "Photography",
+    "cityscape view": "Photography",
+    "river view": "Photography",
+    "daylight experience": "Photography",
+    "neon lights": "Neon",
+    "nighttime": "Neon",
+    "urban": "Neon",
+    "slow-travel": "Slow Travel",
+    "matcha tea": "Matcha",
+    "architectural": "Architecture",
+    "modern architecture": "Architecture",
+    "traditional architecture": "Architecture",
+    "architectural marvel": "Architecture",
+    "cozy vibe": "Cozy",
+    "homely atmosphere": "Cozy",
+    "elegant ambiance": "Cozy",
+    "indoor garden": "Cozy",
+    "gardening": "Cozy",
+    "creative space": "Creative",
+    "art": "Creative",
+    "art concept space": "Creative",
+    "optical art": "Creative",
+    "folk art": "Creative",
+    "visual inspiration": "Creative",
+    "craftsmanship": "Creative",
+    "unique design": "Creative",
+    "cultural hub": "Creative",
+    "croissant gym theme": "Creative",
+    "luxurious": "Luxury",
+    "luxury stay": "Luxury",
+    "luxury experience": "Luxury",
+    "modern luxury": "Luxury",
+    "elegant metropolis": "Luxury",
+    "fashion": "Luxury",
+    "vintage style": "Vintage",
+    "historical": "Vintage",
+    "historical charm": "Vintage",
+    "historical landmark": "Vintage",
+    "historical water town": "Vintage",
+    "cultural heritage": "Vintage",
+    "traditional": "Vintage",
+    "traditional craft": "Vintage",
+    "picturesque canals": "Slow Travel",
+}
+
+
+def _resolve_aesthetic_tag(raw: str) -> str | None:
+    cleaned = raw.strip()
+    if not cleaned:
+        return None
+    lower = cleaned.lower()
+    if lower in _CANONICAL_BY_LOWER:
+        return _CANONICAL_BY_LOWER[lower]
+    return _AESTHETIC_TAG_ALIASES.get(lower)
+
+
+def normalize_aesthetic_tags(tags: Any, *, allow_custom: bool = False) -> list[str]:
+    if isinstance(tags, str):
+        raw_tags = [tag.strip() for tag in tags.split(",") if tag.strip()]
+    elif isinstance(tags, list):
+        raw_tags = [str(tag).strip() for tag in tags if str(tag).strip()]
+    else:
+        raw_tags = []
+
+    result: list[str] = []
+    seen: set[str] = set()
+
+    for raw in raw_tags:
+        canonical = _resolve_aesthetic_tag(raw)
+        if canonical:
+            if canonical not in seen:
+                result.append(canonical)
+                seen.add(canonical)
+        elif allow_custom and raw not in seen:
+            result.append(raw)
+            seen.add(raw)
+
+    if not result and not allow_custom:
+        return ["Hidden Gem"]
+    return result[:6]
+
 
 class LLMTask(str, Enum):
     PLACE_ENRICH = "place_enrich"
@@ -52,11 +167,7 @@ class ExtractedPlace(BaseModel):
     @field_validator("tags", mode="before")
     @classmethod
     def normalize_tags(cls, value: Any) -> list[str]:
-        if isinstance(value, str):
-            return [tag.strip() for tag in value.split(",") if tag.strip()]
-        if isinstance(value, list):
-            return [str(tag).strip() for tag in value if str(tag).strip()]
-        return []
+        return normalize_aesthetic_tags(value, allow_custom=False)
 
     def to_dict(self) -> dict[str, Any]:
         return self.model_dump()

@@ -17,6 +17,7 @@ const MOOD_BY_TAG: Record<string, string> = {
   Cozy: "Botanical Lunch",
   Creative: "Immersive Light",
   Luxury: "Rooftop Pause",
+  Matcha: "Tea Ceremony Pause",
 };
 
 function pickMood(place: Place, aestheticMode: boolean): string | undefined {

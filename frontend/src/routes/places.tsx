@@ -11,7 +11,14 @@ import {
   useUpdatePlace,
 } from "@/lib/api/hooks";
 import { ApiError, resolveImageUrl } from "@/lib/api/client";
+import {
+  KNOWN_AESTHETIC_TAGS,
+  splitPlaceTags,
+  usedAestheticFilterTags,
+  type AestheticTag,
+} from "@/lib/aesthetic-tags";
 import type { Category, Place } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import {
   VerificationBadge,
   SourceBadge,
@@ -55,21 +62,6 @@ export const Route = createFileRoute("/places")({
 
 const verifs = ["All", "Verified", "Unverified", "Needs Recheck"];
 
-const knownAestheticTags = [
-  "Architecture",
-  "Coffee Culture",
-  "Cozy",
-  "Creative",
-  "Hidden Gem",
-  "Luxury",
-  "Matcha",
-  "Minimal",
-  "Neon",
-  "Photography",
-  "Slow Travel",
-  "Vintage",
-] as const;
-
 function hasMapCoordinates(place: Place): boolean {
   return place.lat != null && place.lng != null;
 }
@@ -102,11 +94,8 @@ function PlacesPage() {
   const categoryOptions = useMemo(() => ["All", ...placeCategories], []);
 
   const tagOptions = useMemo(() => {
-    const merged = new Set<string>([
-      ...knownAestheticTags,
-      ...allPlaces.flatMap((p) => p.tags),
-    ]);
-    return ["All", ...Array.from(merged).sort((a, b) => a.localeCompare(b))];
+    const used = usedAestheticFilterTags(allPlaces.flatMap((p) => p.tags));
+    return ["All", ...used];
   }, [allPlaces]);
 
   useEffect(() => {
@@ -226,7 +215,8 @@ function PlaceDrawer({
   const [category, setCategory] = useState<Category>(place.category);
   const [description, setDescription] = useState(place.description);
   const [aestheticNote, setAestheticNote] = useState(place.aestheticNote);
-  const [tagsText, setTagsText] = useState(place.tags.join(", "));
+  const [selectedTags, setSelectedTags] = useState<AestheticTag[]>([]);
+  const [customTagsText, setCustomTagsText] = useState("");
 
   useEffect(() => {
     setEditing(false);
@@ -237,14 +227,23 @@ function PlaceDrawer({
     setCategory(place.category);
     setDescription(place.description);
     setAestheticNote(place.aestheticNote);
-    setTagsText(place.tags.join(", "));
+    const { canonical, custom } = splitPlaceTags(place.tags);
+    setSelectedTags(canonical);
+    setCustomTagsText(custom.join(", "));
   }, [place]);
 
+  function toggleTag(tag: AestheticTag) {
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
+    );
+  }
+
   async function handleSave() {
-    const tags = tagsText
+    const customTags = customTagsText
       .split(",")
       .map((t) => t.trim())
       .filter(Boolean);
+    const tags = [...selectedTags, ...customTags];
     try {
       const updated = await updatePlace.mutateAsync({
         placeId: place.id,
@@ -263,12 +262,12 @@ function PlaceDrawer({
       const updated = await geocodePlace.mutateAsync(place.id);
       onChange(updated);
       if (hasMapCoordinates(updated)) {
-        toast.success("Адрес найден и добавлен на карту");
+        toast.success("Address found and added to map");
       } else {
-        toast.error("Не удалось найти адрес. Попробуйте уточнить название или адрес.");
+        toast.error("Could not find address. Try refining the name or address.");
       }
     } catch {
-      toast.error("Ошибка при поиске адреса");
+      toast.error("Error searching for address");
     }
   }
 
@@ -276,12 +275,12 @@ function PlaceDrawer({
     try {
       const updated = await enrichPlace.mutateAsync(place.id);
       onChange(updated);
-      toast.success("Карточка обогащена через GigaChat");
+      toast.success("Place enriched via GigaChat");
     } catch (err) {
       if (err instanceof ApiError && err.status === 503) {
-        toast.error("GigaChat не настроен — добавьте GIGACHAT_CREDENTIALS в .env");
+        toast.error("GigaChat is not configured — add GIGACHAT_CREDENTIALS to .env");
       } else {
-        toast.error("Не удалось обогатить карточку");
+        toast.error("Failed to enrich place");
       }
     }
   }
@@ -367,8 +366,31 @@ function PlaceDrawer({
                       className="min-h-20 resize-none"
                     />
                   </Field>
-                  <Field label="Tags (comma-separated)">
-                    <Input value={tagsText} onChange={(e) => setTagsText(e.target.value)} />
+                  <Field label="Aesthetic tags">
+                    <div className="flex flex-wrap gap-1.5">
+                      {KNOWN_AESTHETIC_TAGS.map((tag) => (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => toggleTag(tag)}
+                          className={cn(
+                            "rounded-md px-2 py-1 text-[11px] transition-colors",
+                            selectedTags.includes(tag)
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-muted text-muted-foreground hover:bg-muted/80",
+                          )}
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
+                  </Field>
+                  <Field label="Custom tags (optional, comma-separated)">
+                    <Input
+                      value={customTagsText}
+                      onChange={(e) => setCustomTagsText(e.target.value)}
+                      placeholder="e.g. Rooftop, Local favorite"
+                    />
                   </Field>
                 </div>
                 <div className="flex gap-2 pt-2">
@@ -401,12 +423,12 @@ function PlaceDrawer({
                   {hasMapCoordinates(place) ? (
                     <span className="inline-flex items-center gap-1 rounded-md bg-success/15 px-2 py-0.5 text-[10px] font-medium text-success">
                       <MapPinned className="h-3 w-3" />
-                      На карте
+                      On map
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 rounded-md bg-warning/15 px-2 py-0.5 text-[10px] font-medium text-warning">
                       <AlertTriangle className="h-3 w-3" />
-                      Нужен адрес
+                      Needs address
                     </span>
                   )}
                 </div>

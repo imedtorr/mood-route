@@ -44,7 +44,7 @@ export function PlaceCard({ place, onClick }: { place: Place; onClick?: () => vo
           ) : !hasMapCoordinates(place) ? (
             <p className="flex items-center gap-1 pl-[18px] text-warning">
               <AlertTriangle className="h-3 w-3 shrink-0" />
-              Нужен адрес для маршрута
+              Address needed for route
             </p>
           ) : null}
         </div>

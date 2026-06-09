@@ -8,6 +8,7 @@ from app.rag.store import search_places, upsert_place
 from app.services.agent_log import log_agent_event, new_run_id
 from app.services.geocoding import geocode_place
 from app.services.gigachat import gigachat_service
+from app.services.llm_utils import normalize_aesthetic_tags
 from app.services.tavily import tavily_service
 
 
@@ -90,7 +91,7 @@ def _apply_enriched_fields(place: PlaceModel, enriched: dict) -> None:
     if aesthetic:
         place.aesthetic_note = aesthetic
     if enriched.get("tags"):
-        place.tags = enriched["tags"]
+        place.tags = normalize_aesthetic_tags(enriched["tags"], allow_custom=False)
     if enriched.get("category"):
         place.category = enriched["category"]
     if enriched.get("confidence"):

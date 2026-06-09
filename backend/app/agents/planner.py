@@ -25,6 +25,7 @@ MOOD_BY_TAG = {
     "Cozy": "Botanical Lunch",
     "Creative": "Immersive Light",
     "Luxury": "Rooftop Pause",
+    "Matcha": "Tea Ceremony Pause",
 }
 
 DEFAULT_THEMES = [
