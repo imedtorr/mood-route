@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 import sys
@@ -9,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api.routes import router
 from app.config import settings
 from app.db.database import SessionLocal, init_db
+from app.services.ocr import warm_ocr_reader
 from app.services.ollama import close_ollama_client, init_ollama_client
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -22,6 +24,7 @@ async def lifespan(app: FastAPI):
     Path(settings.chroma_path).mkdir(parents=True, exist_ok=True)
     Path("data").mkdir(parents=True, exist_ok=True)
     await init_ollama_client()
+    await asyncio.to_thread(warm_ocr_reader)
     init_db()
     db = SessionLocal()
     try:

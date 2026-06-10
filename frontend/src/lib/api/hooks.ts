@@ -4,6 +4,7 @@ import { api } from "@/lib/api/client";
 import type {
   TripGenerateRequest,
   PlaceUpdate,
+  Upload,
   WorkspaceCreate,
   ItineraryStopActionRequest,
 } from "@/lib/types";
@@ -155,7 +156,11 @@ export function useAddFileUpload() {
   return useMutation({
     mutationFn: ({ file, note }: { file: File; note: string }) =>
       api.addFile(workspace.id, file, note),
-    onSuccess: () => {
+    onSuccess: (upload) => {
+      qc.setQueryData<Upload[]>(["uploads", workspace.id], (prev = []) => [
+        upload,
+        ...prev.filter((u) => u.id !== upload.id),
+      ]);
       qc.invalidateQueries({ queryKey: ["uploads", workspace.id] });
       qc.invalidateQueries({ queryKey: ["agentEvents", workspace.id] });
       qc.invalidateQueries({ queryKey: ["places", workspace.id] });

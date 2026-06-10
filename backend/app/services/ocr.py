@@ -33,6 +33,11 @@ def _reader():
     return easyocr.Reader(["ru", "en"], gpu=False, verbose=False)
 
 
+def warm_ocr_reader() -> None:
+    """Pre-load EasyOCR models (run via asyncio.to_thread on startup)."""
+    _reader()
+
+
 def _is_noise_line(text: str) -> bool:
     lower = text.strip().lower()
     if not lower or lower in OCR_UI_NOISE:

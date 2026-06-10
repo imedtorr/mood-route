@@ -1,3 +1,4 @@
+import asyncio
 import html
 import re
 from pathlib import Path
@@ -228,7 +229,7 @@ async def extract_place_from_screenshot(
     image_hint: str = "",
     destination_hint: str = "",
 ) -> dict:
-    ocr_text = extract_text_from_image(file_path)
+    ocr_text = await asyncio.to_thread(extract_text_from_image, file_path)
 
     if _is_meaningful_ocr(ocr_text) and await ollama_service.available():
         text_extracted = await extract_place_from_text(

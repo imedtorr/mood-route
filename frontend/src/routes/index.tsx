@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useRef, useState } from "react";
-import { Link2, UploadCloud, Plus, Info, MapPin } from "lucide-react";
+import { Link2, UploadCloud, Plus, Info, MapPin, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
 import { UploadCard } from "@/components/upload-card";
@@ -188,30 +188,47 @@ function InboxPage() {
               />
               <div
                 role="button"
-                tabIndex={0}
-                onClick={() => fileRef.current?.click()}
-                onKeyDown={(e) => e.key === "Enter" && fileRef.current?.click()}
+                tabIndex={addFile.isPending ? -1 : 0}
+                aria-busy={addFile.isPending}
+                onClick={() => !addFile.isPending && fileRef.current?.click()}
+                onKeyDown={(e) =>
+                  !addFile.isPending && e.key === "Enter" && fileRef.current?.click()
+                }
                 onDragOver={(e) => {
+                  if (addFile.isPending) return;
                   e.preventDefault();
                   setDragging(true);
                 }}
                 onDragLeave={() => setDragging(false)}
                 onDrop={(e) => {
+                  if (addFile.isPending) return;
                   e.preventDefault();
                   setDragging(false);
                   handleFiles(e.dataTransfer.files);
                 }}
                 className={cn(
-                  "flex h-full min-h-44 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition-colors",
-                  dragging ? "border-primary bg-primary/5" : "border-border bg-card",
+                  "flex h-full min-h-44 flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition-colors",
+                  addFile.isPending
+                    ? "cursor-wait border-primary/50 bg-primary/5"
+                    : "cursor-pointer",
+                  !addFile.isPending && dragging && "border-primary bg-primary/5",
+                  !addFile.isPending && !dragging && "border-border bg-card",
                 )}
               >
                 <span className="flex size-12 items-center justify-center rounded-full bg-accent text-accent-foreground">
-                  <UploadCloud className="size-6" />
+                  {addFile.isPending ? (
+                    <Loader2 className="size-6 animate-spin" />
+                  ) : (
+                    <UploadCloud className="size-6" />
+                  )}
                 </span>
-                <p className="mt-3 text-sm font-medium text-foreground">Drag a screenshot here</p>
+                <p className="mt-3 text-sm font-medium text-foreground">
+                  {addFile.isPending ? "Uploading screenshot…" : "Drag a screenshot here"}
+                </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  or click — PNG, JPG up to 10MB
+                  {addFile.isPending
+                    ? "Please wait"
+                    : "or click — PNG, JPG up to 10MB"}
                 </p>
               </div>
             </div>
