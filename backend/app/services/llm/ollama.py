@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import logging
 from pathlib import Path
@@ -17,6 +18,9 @@ from app.prompts.extraction import (
 from app.services.llm_utils import parse_json, validate_extracted_place
 
 logger = logging.getLogger(__name__)
+
+GENERATE_MAX_RETRIES = 3
+GENERATE_RETRY_BASE_DELAY = 2.0
 
 _http_client: httpx.AsyncClient | None = None
 
@@ -38,6 +42,32 @@ def _get_client(*, timeout: float = 180.0) -> httpx.AsyncClient:
     if _http_client is not None:
         return _http_client
     return httpx.AsyncClient(timeout=timeout)
+
+
+def _is_generate_retryable(exc: Exception, attempt: int) -> bool:
+    if attempt >= GENERATE_MAX_RETRIES - 1:
+        return False
+    if isinstance(
+        exc,
+        (
+            httpx.TimeoutException,
+            httpx.ConnectError,
+            httpx.ReadError,
+            httpx.WriteError,
+            httpx.PoolTimeout,
+        ),
+    ):
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        if status in (502, 503, 429):
+            return True
+        if status == 404:
+            body = exc.response.text.lower()
+            if "not found" in body and attempt > 0:
+                return False
+            return True
+    return False
 
 
 class OllamaService:
@@ -110,18 +140,35 @@ class OllamaService:
             payload["format"] = "json"
         if images:
             payload["images"] = images
-        try:
-            client = _get_client()
-            if client is _http_client:
-                resp = await client.post(f"{self.base_url}/api/generate", json=payload)
-            else:
-                async with client:
+
+        last_exc: Exception | None = None
+        for attempt in range(GENERATE_MAX_RETRIES):
+            try:
+                client = _get_client()
+                if client is _http_client:
                     resp = await client.post(f"{self.base_url}/api/generate", json=payload)
-            resp.raise_for_status()
-            return resp.json().get("response", "")
-        except Exception as exc:
-            logger.warning("Ollama generate failed (model=%s): %s", model, exc)
-            return ""
+                else:
+                    async with client:
+                        resp = await client.post(f"{self.base_url}/api/generate", json=payload)
+                resp.raise_for_status()
+                return resp.json().get("response", "")
+            except Exception as exc:
+                last_exc = exc
+                if not _is_generate_retryable(exc, attempt):
+                    break
+                delay = GENERATE_RETRY_BASE_DELAY * (attempt + 1)
+                logger.info(
+                    "Ollama generate retry %s/%s (model=%s, delay=%.1fs): %s",
+                    attempt + 2,
+                    GENERATE_MAX_RETRIES,
+                    model,
+                    delay,
+                    exc,
+                )
+                await asyncio.sleep(delay)
+
+        logger.warning("Ollama generate failed (model=%s): %s", model, last_exc)
+        return ""
 
     def _build_context(
         self,

@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 import chromadb
@@ -5,6 +6,8 @@ import chromadb
 from app.config import settings
 from app.db.models import PlaceModel
 from app.rag.embeddings import embed_text, embed_texts
+
+logger = logging.getLogger(__name__)
 
 _client: chromadb.PersistentClient | None = None
 

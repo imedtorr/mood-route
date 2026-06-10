@@ -1,4 +1,3 @@
-import asyncio
 import json
 import uuid
 from pathlib import Path
@@ -381,10 +380,10 @@ def delete_upload(workspace_id: str, upload_id: str, db: Session = Depends(get_d
     return {"ok": True}
 
 
-def _run_ingest_task(upload_id: str) -> None:
+async def _run_ingest_task(upload_id: str) -> None:
     db = SessionLocal()
     try:
-        asyncio.run(run_ingest_pipeline(db, upload_id))
+        await run_ingest_pipeline(db, upload_id)
     finally:
         db.close()
 
