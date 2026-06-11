@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
 import { UploadCard } from "@/components/upload-card";
 import { useAddFileUpload, useAddTextUpload, useAddUrlUpload, useUploads } from "@/lib/api/hooks";
+import { useApp } from "@/lib/app-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -24,6 +25,7 @@ export const Route = createFileRoute("/")({
 });
 
 function InboxPage() {
+  const { aesthetic } = useApp();
   const { data: uploads = [], isLoading } = useUploads();
   const addUrl = useAddUrlUpload();
   const addFile = useAddFileUpload();
@@ -83,17 +85,15 @@ function InboxPage() {
       />
 
       <div className="mx-auto max-w-5xl px-4 py-6 md:px-8">
-        <Tabs
-          value={activeTab}
-          onValueChange={setActiveTab}
-          className={cn("grid gap-4", activeTab === "photo" && "lg:grid-cols-5")}
+        <div
+          className={cn(
+            "rounded-2xl border p-5 shadow-[var(--shadow-card)]",
+            aesthetic
+              ? "border-primary/30 bg-gradient-to-br from-card to-accent/30"
+              : "border-border bg-card",
+          )}
         >
-          <div
-            className={cn(
-              "rounded-2xl border border-border bg-card p-5",
-              activeTab === "photo" && "lg:col-span-3",
-            )}
-          >
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="mb-4 grid w-full grid-cols-3">
               <TabsTrigger value="photo">Photo</TabsTrigger>
               <TabsTrigger value="article">Article</TabsTrigger>
@@ -161,82 +161,110 @@ function InboxPage() {
             </TabsContent>
 
             <TabsContent value="photo" className="mt-0">
-              <p className="text-sm text-muted-foreground">
-                Drag a screenshot to the area on the right, or click it.
-              </p>
+              <div className="grid gap-5 lg:grid-cols-5">
+                <div className="flex flex-col lg:col-span-3">
+                  <h3 className="font-serif text-lg font-medium text-foreground">
+                    Drop your inspiration
+                  </h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Drag a screenshot to the area on the right, or click it.
+                  </p>
+                  <label className="mt-4 block text-sm font-medium text-foreground">
+                    Note <span className="font-normal text-muted-foreground">(optional)</span>
+                  </label>
+                  <Textarea
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="A short note helps the AI understand your taste…"
+                    className="mt-2 min-h-20 flex-1 resize-none"
+                  />
+                  {aesthetic && (
+                    <p className="mt-3 font-serif text-sm italic text-muted-foreground">
+                      &ldquo;A café corner, a neon alley, a quiet courtyard.&rdquo;
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex flex-col lg:col-span-2 lg:border-l lg:border-border/50 lg:pl-5">
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    onChange={(e) => handleFiles(e.target.files)}
+                  />
+                  <div
+                    role="button"
+                    tabIndex={addFile.isPending ? -1 : 0}
+                    aria-busy={addFile.isPending}
+                    onClick={() => !addFile.isPending && fileRef.current?.click()}
+                    onKeyDown={(e) =>
+                      !addFile.isPending && e.key === "Enter" && fileRef.current?.click()
+                    }
+                    onDragOver={(e) => {
+                      if (addFile.isPending) return;
+                      e.preventDefault();
+                      setDragging(true);
+                    }}
+                    onDragLeave={() => setDragging(false)}
+                    onDrop={(e) => {
+                      if (addFile.isPending) return;
+                      e.preventDefault();
+                      setDragging(false);
+                      handleFiles(e.dataTransfer.files);
+                    }}
+                    className={cn(
+                      "flex min-h-52 flex-1 flex-col items-center justify-center rounded-2xl border border-border/60 p-6 text-center transition-all duration-200",
+                      addFile.isPending
+                        ? "cursor-wait border-primary/40 bg-primary/5"
+                        : "cursor-pointer bg-gradient-to-br from-accent/25 to-muted/40 hover:border-primary/30 hover:from-accent/35",
+                      !addFile.isPending &&
+                        dragging &&
+                        "scale-[1.01] border-primary/50 bg-primary/5 ring-2 ring-primary/20",
+                      aesthetic && !addFile.isPending && !dragging && "to-accent/50",
+                    )}
+                  >
+                    <span className="flex size-14 items-center justify-center rounded-full bg-accent text-accent-foreground ring-4 ring-background/80">
+                      {addFile.isPending ? (
+                        <Loader2 className="size-6 animate-spin" />
+                      ) : (
+                        <UploadCloud className="size-6" />
+                      )}
+                    </span>
+                    <p className="mt-3 text-sm font-medium text-foreground">
+                      {addFile.isPending ? "Uploading screenshot…" : "Drag a screenshot here"}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {addFile.isPending ? "Please wait" : "or click to browse"}
+                    </p>
+                  </div>
+                  <div className="mt-3 flex justify-center">
+                    <span className="inline-flex items-center rounded-full bg-accent px-2.5 py-1 text-xs font-medium text-accent-foreground">
+                      PNG, JPG · up to 10MB
+                    </span>
+                  </div>
+                </div>
+              </div>
             </TabsContent>
 
-            <label className="mt-4 block text-sm font-medium text-foreground">
-              Note <span className="font-normal text-muted-foreground">(optional)</span>
-            </label>
-            <Textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="A short note helps the AI understand your taste…"
-              className="mt-2 min-h-20 resize-none"
-            />
-          </div>
+            {activeTab !== "photo" && (
+              <>
+                <label className="mt-4 block text-sm font-medium text-foreground">
+                  Note <span className="font-normal text-muted-foreground">(optional)</span>
+                </label>
+                <Textarea
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="A short note helps the AI understand your taste…"
+                  className="mt-2 min-h-20 resize-none"
+                />
+              </>
+            )}
+          </Tabs>
+        </div>
 
-          {activeTab === "photo" && (
-            <div className="lg:col-span-2">
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                className="hidden"
-                onChange={(e) => handleFiles(e.target.files)}
-              />
-              <div
-                role="button"
-                tabIndex={addFile.isPending ? -1 : 0}
-                aria-busy={addFile.isPending}
-                onClick={() => !addFile.isPending && fileRef.current?.click()}
-                onKeyDown={(e) =>
-                  !addFile.isPending && e.key === "Enter" && fileRef.current?.click()
-                }
-                onDragOver={(e) => {
-                  if (addFile.isPending) return;
-                  e.preventDefault();
-                  setDragging(true);
-                }}
-                onDragLeave={() => setDragging(false)}
-                onDrop={(e) => {
-                  if (addFile.isPending) return;
-                  e.preventDefault();
-                  setDragging(false);
-                  handleFiles(e.dataTransfer.files);
-                }}
-                className={cn(
-                  "flex h-full min-h-44 flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition-colors",
-                  addFile.isPending
-                    ? "cursor-wait border-primary/50 bg-primary/5"
-                    : "cursor-pointer",
-                  !addFile.isPending && dragging && "border-primary bg-primary/5",
-                  !addFile.isPending && !dragging && "border-border bg-card",
-                )}
-              >
-                <span className="flex size-12 items-center justify-center rounded-full bg-accent text-accent-foreground">
-                  {addFile.isPending ? (
-                    <Loader2 className="size-6 animate-spin" />
-                  ) : (
-                    <UploadCloud className="size-6" />
-                  )}
-                </span>
-                <p className="mt-3 text-sm font-medium text-foreground">
-                  {addFile.isPending ? "Uploading screenshot…" : "Drag a screenshot here"}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {addFile.isPending
-                    ? "Please wait"
-                    : "or click — PNG, JPG up to 10MB"}
-                </p>
-              </div>
-            </div>
-          )}
-        </Tabs>
-
-        <div className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Info className="size-3.5" />
+        <div className="mt-3 flex items-center gap-1.5 rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          <Info className="size-3.5 shrink-0" />
           Uploads are processed automatically in the background.
         </div>
 

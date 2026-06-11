@@ -1,53 +1,55 @@
-# Коммит и пуш
+# Commit and push
 
-Закоммить все текущие изменения и отправить их в удалённый репозиторий.
+Commit all current changes and push them to the remote repository.
 
-## Шаги
+## Steps
 
-1. Параллельно выполни:
-   - `git status` — посмотреть неотслеживаемые и изменённые файлы
-   - `git diff` — unstaged изменения
-   - `git diff --staged` — staged изменения (если есть)
-   - `git log --oneline -10` — стиль сообщений коммитов в репозитории
+1. Run in parallel:
+   - `git status` — list untracked and modified files
+   - `git diff` — unstaged changes
+   - `git diff --staged` — staged changes (if any)
+   - `git log --oneline -10` — commit message style in the repo
 
-2. Проанализируй изменения и составь сообщение коммита:
-   - 1–2 предложения, фокус на «зачем», а не на «что»
-   - Точно отражай суть: feature / fix / refactor / test / docs и т.д.
-   - Не включай файлы с секретами (`.env`, credentials и т.п.) — предупреди пользователя, если такие есть
+2. Analyze changes and draft a commit message:
+   - 1–2 sentences, focus on *why*, not *what*
+   - Accurately reflect the change: feature / fix / refactor / test / docs, etc.
+   - Do not include secret files (`.env`, credentials, etc.) — warn the user if present
 
-3. Если изменений нет — сообщи об этом и остановись.
+3. If there are no changes — report that and stop.
 
-4. Добавь в staging все релевантные файлы (`git add`).
+4. Stage all relevant files (`git add`).
 
-5. Создай коммит:
+5. Create the commit:
+
 ```bash
 git commit -m "$(cat <<'EOF'
-Сообщение коммита здесь.
+Commit message here.
 
 EOF
 )"
 ```
 
-6. Если коммит отклонён pre-commit hook — исправь проблему и создай **новый** коммит (не amend).
+6. If the commit is rejected by a pre-commit hook — fix the issue and create a **new** commit (do not amend).
 
-7. Проверь состояние ветки:
-   - `git status`
-   - `git remote -v`
-   - `git branch -vv`
+7. Check branch state:
 
-8. Отправь в удалённый репозиторий:
-   - Если ветка ещё не отслеживает remote: `git push -u origin HEAD`
-   - Иначе: `git push`
-   - **Никогда** не делай `git push --force` на `main`/`master`
+```bash
+git status
+```
 
-9. После пуша выполни `git status` и кратко сообщи пользователю:
-   - что закоммичено
-   - куда запушено (ветка, remote)
-   - были ли проблемы
+8. Push to remote:
+   - If the branch does not track a remote yet: `git push -u origin HEAD`
+   - Otherwise: `git push`
+   - **Never** run `git push --force` on `main`/`master`
 
-## Ограничения
+9. After push, run `git status` and briefly report:
+   - what was committed
+   - where it was pushed (branch, remote)
+   - any issues encountered
 
-- Не меняй `git config`
-- Не используй деструктивные команды (`reset --hard`, force push и т.п.)
-- Не пропускай hooks (`--no-verify`)
-- Не делай amend, если коммит уже был запушен
+## Constraints
+
+- Do not change `git config`
+- Do not use destructive commands (`reset --hard`, force push, etc.)
+- Do not skip hooks (`--no-verify`)
+- Do not amend if the commit was already pushed

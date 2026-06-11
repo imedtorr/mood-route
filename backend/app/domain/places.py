@@ -1,3 +1,9 @@
+"""Place normalization helpers.
+
+Cyrillic entries in CITY_ALIASES and COUNTRY_ALIASES map common non-English
+spellings from user input and OCR to canonical English names for storage and UI.
+"""
+
 import re
 
 GENERIC_TITLES = {
