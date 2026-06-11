@@ -2,7 +2,14 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
-import { PlaceCard } from "@/components/place-card";
+import { SortablePlaceGrid } from "@/components/sortable-place-grid";
+import { useApp } from "@/lib/app-context";
+import {
+  mergePlacesOrder,
+  placesToOrder,
+  reorderWithVisible,
+  savePlacesOrder,
+} from "@/lib/places-order";
 import {
   useDeletePlace,
   useEnrichPlace,
@@ -19,12 +26,7 @@ import {
 } from "@/lib/aesthetic-tags";
 import type { Category, Place } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import {
-  VerificationBadge,
-  SourceBadge,
-  ConfidenceBadge,
-  CategoryBadge,
-} from "@/components/badges";
+import { VerificationBadge, CategoryBadge } from "@/components/badges";
 import {
   AlertTriangle,
   ChevronDown,
@@ -84,12 +86,19 @@ const placeCategories: Category[] = [
 function PlacesPage() {
   const { placeId } = Route.useSearch();
   const navigate = Route.useNavigate();
+  const { workspace } = useApp();
   const [cat, setCat] = useState("All");
   const [tag, setTag] = useState("All");
   const [verif, setVerif] = useState("All");
   const [active, setActive] = useState<Place | null>(null);
+  const [order, setOrder] = useState<string[]>([]);
 
   const { data: allPlaces = [] } = usePlaces();
+
+  useEffect(() => {
+    if (!workspace.id) return;
+    setOrder(placesToOrder(mergePlacesOrder(workspace.id, allPlaces)));
+  }, [workspace.id, allPlaces]);
 
   const categoryOptions = useMemo(() => ["All", ...placeCategories], []);
 
@@ -111,16 +120,33 @@ function PlacesPage() {
     });
   }, [placeId, allPlaces]);
 
+  const orderedPlaces = useMemo(() => {
+    const byId = new Map(allPlaces.map((p) => [p.id, p]));
+    const result = order.map((id) => byId.get(id)).filter((place): place is Place => place != null);
+    const inOrder = new Set(order);
+    for (const place of allPlaces) {
+      if (!inOrder.has(place.id)) result.unshift(place);
+    }
+    return result;
+  }, [allPlaces, order]);
+
   const filtered = useMemo(
     () =>
-      allPlaces.filter((p) => {
+      orderedPlaces.filter((p) => {
         if (cat !== "All" && p.category !== cat) return false;
         if (verif !== "All" && p.verification !== verif) return false;
         if (tag !== "All" && !p.tags.includes(tag)) return false;
         return true;
       }),
-    [allPlaces, cat, verif, tag],
+    [orderedPlaces, cat, verif, tag],
   );
+
+  function handleReorder(nextFilteredOrder: string[]) {
+    if (!workspace.id) return;
+    const nextOrder = reorderWithVisible(order, nextFilteredOrder);
+    setOrder(nextOrder);
+    savePlacesOrder(workspace.id, nextOrder);
+  }
 
   return (
     <div>
@@ -138,13 +164,7 @@ function PlacesPage() {
       </div>
 
       <div className="px-8 py-6">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filtered.map((p) => (
-            <div key={p.id} id={`place-${p.id}`}>
-              <PlaceCard place={p} onClick={() => setActive(p)} />
-            </div>
-          ))}
-        </div>
+        <SortablePlaceGrid places={filtered} onReorder={handleReorder} onPlaceClick={setActive} />
       </div>
 
       {active && (
@@ -299,257 +319,265 @@ function PlaceDrawer({
   return (
     <>
       <div
-        className="fixed inset-0 z-50 flex justify-end bg-black/30 backdrop-blur-sm"
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm sm:p-6"
         onClick={onClose}
       >
         <div
-          className="h-full w-full max-w-md overflow-y-auto bg-background shadow-2xl"
+          className="relative w-full max-w-5xl overflow-hidden rounded-xl bg-background shadow-2xl ring-1 ring-border/60"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="relative">
-            <button
-              type="button"
-              onClick={onClose}
-              className="absolute right-3 top-3 z-10 rounded-full bg-background/95 p-2 shadow-md ring-1 ring-border/60 transition-all hover:bg-accent hover:text-accent-foreground hover:shadow-lg active:scale-95"
-              title="Close"
-            >
-              <X className="h-4 w-4" />
-            </button>
-            <img
-              src={resolveImageUrl(place.image)}
-              alt={place.title}
-              className="h-72 w-full object-cover"
-            />
-          </div>
-          <div className="space-y-4 p-6">
-            {editing ? (
-              <>
-                <div className="space-y-3">
-                  <Field label="Name">
-                    <Input value={title} onChange={(e) => setTitle(e.target.value)} />
-                  </Field>
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field label="City">
-                      <Input value={city} onChange={(e) => setCity(e.target.value)} />
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute right-3 top-3 z-20 rounded-full bg-background/95 p-2 shadow-md ring-1 ring-border/60 transition-all hover:bg-accent hover:text-accent-foreground hover:shadow-lg active:scale-95"
+            title="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+          <div className="grid md:grid-cols-[minmax(280px,2fr)_minmax(360px,3fr)]">
+            <div className="relative overflow-hidden md:min-h-[420px]">
+              <img
+                src={resolveImageUrl(place.image)}
+                alt={place.title}
+                className="h-56 w-full object-cover md:absolute md:inset-0 md:h-full"
+              />
+            </div>
+            <div className="flex max-h-[85vh] flex-col overflow-y-auto p-6 md:max-h-none md:min-h-[420px] md:p-8">
+              {editing ? (
+                <div className="space-y-4">
+                  <div className="space-y-3">
+                    <Field label="Name">
+                      <Input value={title} onChange={(e) => setTitle(e.target.value)} />
                     </Field>
-                    <Field label="Country">
-                      <Input value={country} onChange={(e) => setCountry(e.target.value)} />
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="City">
+                        <Input value={city} onChange={(e) => setCity(e.target.value)} />
+                      </Field>
+                      <Field label="Country">
+                        <Input value={country} onChange={(e) => setCountry(e.target.value)} />
+                      </Field>
+                    </div>
+                    <Field label="Category">
+                      <select
+                        value={category}
+                        onChange={(e) => setCategory(e.target.value as Category)}
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                      >
+                        {placeCategories.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label="Address">
+                      <Input value={address} onChange={(e) => setAddress(e.target.value)} />
+                    </Field>
+                    <Field label="Description">
+                      <Textarea
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        className="min-h-24 resize-none"
+                      />
+                    </Field>
+                    <Field label="Aesthetic note">
+                      <Textarea
+                        value={aestheticNote}
+                        onChange={(e) => setAestheticNote(e.target.value)}
+                        className="min-h-20 resize-none"
+                      />
+                    </Field>
+                    <Field label="Aesthetic tags">
+                      <div className="flex flex-wrap gap-1.5">
+                        {KNOWN_AESTHETIC_TAGS.map((tag) => (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => toggleTag(tag)}
+                            className={cn(
+                              "rounded-md px-2 py-1 text-[11px] transition-colors",
+                              selectedTags.includes(tag)
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-muted text-muted-foreground hover:bg-muted/80",
+                            )}
+                          >
+                            {tag}
+                          </button>
+                        ))}
+                      </div>
+                    </Field>
+                    <Field label="Custom tags (optional, comma-separated)">
+                      <Input
+                        value={customTagsText}
+                        onChange={(e) => setCustomTagsText(e.target.value)}
+                        placeholder="e.g. Rooftop, Local favorite"
+                      />
                     </Field>
                   </div>
-                  <Field label="Category">
-                    <select
-                      value={category}
-                      onChange={(e) => setCategory(e.target.value as Category)}
-                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                  <div className="flex gap-2 pt-2">
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => setEditing(false)}
+                      disabled={updatePlace.isPending}
                     >
-                      {placeCategories.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Address">
-                    <Input value={address} onChange={(e) => setAddress(e.target.value)} />
-                  </Field>
-                  <Field label="Description">
-                    <Textarea
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      className="min-h-24 resize-none"
-                    />
-                  </Field>
-                  <Field label="Aesthetic note">
-                    <Textarea
-                      value={aestheticNote}
-                      onChange={(e) => setAestheticNote(e.target.value)}
-                      className="min-h-20 resize-none"
-                    />
-                  </Field>
-                  <Field label="Aesthetic tags">
-                    <div className="flex flex-wrap gap-1.5">
-                      {KNOWN_AESTHETIC_TAGS.map((tag) => (
-                        <button
-                          key={tag}
+                      Cancel
+                    </Button>
+                    <Button
+                      className="flex-1"
+                      onClick={handleSave}
+                      disabled={updatePlace.isPending}
+                    >
+                      {updatePlace.isPending ? "Saving…" : "Save changes"}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <header className="shrink-0 space-y-3">
+                    <div>
+                      <h2 className="font-serif text-3xl tracking-tight">{place.title}</h2>
+                      <div className="mt-1.5 flex items-center gap-1.5 text-sm text-muted-foreground">
+                        <MapPin className="h-3.5 w-3.5 shrink-0" />
+                        {place.city}, {place.country}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <CategoryBadge category={place.category} />
+                      <VerificationBadge status={place.verification} />
+                      {hasMapCoordinates(place) ? (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-success/25 bg-success/12 px-2 py-0.5 text-[10px] font-medium text-success">
+                          <MapPinned className="h-3 w-3" />
+                          On map
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-warning/35 bg-warning/15 px-2 py-0.5 text-[10px] font-medium text-warning-foreground">
+                          <AlertTriangle className="h-3 w-3" />
+                          Needs address
+                        </span>
+                      )}
+                    </div>
+                  </header>
+
+                  <blockquote className="mt-6 shrink-0 border-l-2 border-primary py-1 pl-4">
+                    <p className="font-serif text-lg leading-relaxed italic text-foreground/90">
+                      {place.aestheticNote
+                        ? `\u201C${place.aestheticNote}\u201D`
+                        : "No aesthetic note yet \u2014 click Enrich below"}
+                    </p>
+                  </blockquote>
+
+                  <div className="mt-6 flex-1 divide-y divide-border/60">
+                    <section className="pb-5 pt-0">
+                      <div className="rounded-xl border border-primary/12 bg-accent/50 p-4 ring-1 ring-inset ring-primary/5">
+                        <div className="flex items-baseline justify-between gap-3">
+                          <h3 className="text-[10px] font-medium uppercase tracking-widest text-accent-foreground/80">
+                            About
+                          </h3>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-auto shrink-0 gap-1 px-2 py-0 text-[11px] font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
+                            onClick={handleEnrich}
+                            disabled={enrichPlace.isPending}
+                          >
+                            {enrichPlace.isPending ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Sparkles className="h-3 w-3" />
+                            )}
+                            Enrich
+                          </Button>
+                        </div>
+                        <p className="mt-1.5 text-sm leading-relaxed text-foreground/90">
+                          {place.description || "No description yet \u2014 click Enrich"}
+                        </p>
+                      </div>
+                    </section>
+
+                    <section className="py-5">
+                      <div className="flex items-center justify-between gap-3">
+                        <h3 className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+                          Location
+                        </h3>
+                        <Button
                           type="button"
-                          onClick={() => toggleTag(tag)}
-                          className={cn(
-                            "rounded-md px-2 py-1 text-[11px] transition-colors",
-                            selectedTags.includes(tag)
-                              ? "bg-primary text-primary-foreground"
-                              : "bg-muted text-muted-foreground hover:bg-muted/80",
-                          )}
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 shrink-0 gap-1 px-2 text-[11px] font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
+                          onClick={handleGeocode}
+                          disabled={geocodePlace.isPending}
                         >
-                          {tag}
-                        </button>
+                          {geocodePlace.isPending ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Search className="h-3 w-3" />
+                          )}
+                          Find
+                        </Button>
+                      </div>
+                      <p className="mt-2 text-sm leading-relaxed text-foreground/85">
+                        {place.address || "Address not found \u2014 enter manually or search"}
+                      </p>
+                    </section>
+
+                    <section className="py-5">
+                      <h3 className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+                        Origin
+                      </h3>
+                      <p className="mt-2 text-sm leading-relaxed text-foreground/85">
+                        {place.reason}
+                      </p>
+                      {place.sourceUrl && (
+                        <a
+                          href={place.sourceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-3 inline-flex items-start gap-1.5 text-sm text-primary hover:underline"
+                        >
+                          <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                          <span className="break-all">{place.sourceUrl}</span>
+                        </a>
+                      )}
+                    </section>
+                  </div>
+
+                  <footer className="mt-auto flex shrink-0 items-end justify-between gap-4 border-t border-border pt-5">
+                    <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
+                      {place.tags.map((t) => (
+                        <span
+                          key={t}
+                          className="rounded-full bg-muted px-2.5 py-1 text-[11px] text-muted-foreground"
+                        >
+                          {t}
+                        </span>
                       ))}
                     </div>
-                  </Field>
-                  <Field label="Custom tags (optional, comma-separated)">
-                    <Input
-                      value={customTagsText}
-                      onChange={(e) => setCustomTagsText(e.target.value)}
-                      placeholder="e.g. Rooftop, Local favorite"
-                    />
-                  </Field>
-                </div>
-                <div className="flex gap-2 pt-2">
-                  <Button
-                    variant="outline"
-                    className="flex-1"
-                    onClick={() => setEditing(false)}
-                    disabled={updatePlace.isPending}
-                  >
-                    Cancel
-                  </Button>
-                  <Button className="flex-1" onClick={handleSave} disabled={updatePlace.isPending}>
-                    {updatePlace.isPending ? "Saving…" : "Save changes"}
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div>
-                  <h2 className="font-serif text-3xl tracking-tight">{place.title}</h2>
-                  <div className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
-                    <MapPin className="h-3.5 w-3.5" /> {place.city}, {place.country}
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <CategoryBadge category={place.category} />
-                  <SourceBadge source={place.source} />
-                  <VerificationBadge status={place.verification} />
-                  <ConfidenceBadge value={place.confidence} />
-                  {hasMapCoordinates(place) ? (
-                    <span className="inline-flex items-center gap-1 rounded-md bg-success/15 px-2 py-0.5 text-[10px] font-medium text-success">
-                      <MapPinned className="h-3 w-3" />
-                      On map
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 rounded-md bg-warning/15 px-2 py-0.5 text-[10px] font-medium text-warning">
-                      <AlertTriangle className="h-3 w-3" />
-                      Needs address
-                    </span>
-                  )}
-                </div>
-                <div className="rounded-xl border border-border bg-muted/40 p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
-                        Address
-                      </div>
-                      <p className="mt-1 text-sm leading-relaxed">
-                        {place.address || "Address not found — enter manually or search"}
-                      </p>
+                    <div className="flex shrink-0 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditing(true)}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-muted/60 px-3 py-1.5 text-xs font-medium shadow-sm ring-1 ring-border/50 transition-all hover:bg-accent hover:text-accent-foreground hover:shadow-md active:scale-95"
+                        title="Edit place"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDelete(true)}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-muted/60 px-3 py-1.5 text-xs font-medium shadow-sm ring-1 ring-border/50 transition-all hover:bg-destructive/15 hover:text-destructive hover:ring-destructive/30 hover:shadow-md active:scale-95"
+                        title="Delete place"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete
+                      </button>
                     </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="shrink-0"
-                      onClick={handleGeocode}
-                      disabled={geocodePlace.isPending}
-                    >
-                      {geocodePlace.isPending ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Search className="h-3.5 w-3.5" />
-                      )}
-                      <span className="ml-1.5">Find</span>
-                    </Button>
-                  </div>
+                  </footer>
                 </div>
-                <div className="rounded-xl border border-border bg-muted/40 p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
-                        Description
-                      </div>
-                      <p className="mt-1 text-sm leading-relaxed">
-                        {place.description || "No description yet — click Enrich"}
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="shrink-0"
-                      onClick={handleEnrich}
-                      disabled={enrichPlace.isPending}
-                    >
-                      {enrichPlace.isPending ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Sparkles className="h-3.5 w-3.5" />
-                      )}
-                      <span className="ml-1.5">Enrich</span>
-                    </Button>
-                  </div>
-                </div>
-                <div className="rounded-xl bg-muted/60 p-3">
-                  <div className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
-                    Aesthetic note
-                  </div>
-                  <p className="mt-1 font-serif text-base italic">
-                    {place.aestheticNote
-                      ? `\u201C${place.aestheticNote}\u201D`
-                      : "No aesthetic note yet — click Enrich"}
-                  </p>
-                </div>
-                <div>
-                  <div className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
-                    Why it was saved
-                  </div>
-                  <p className="mt-1 text-sm text-foreground/80">{place.reason}</p>
-                </div>
-                {place.sourceUrl && (
-                  <div>
-                    <div className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
-                      Source link
-                    </div>
-                    <a
-                      href={place.sourceUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-1 inline-flex items-start gap-1.5 text-sm text-primary hover:underline"
-                    >
-                      <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                      <span className="break-all">{place.sourceUrl}</span>
-                    </a>
-                  </div>
-                )}
-                <div className="flex flex-wrap gap-1.5">
-                  {place.tags.map((t) => (
-                    <span
-                      key={t}
-                      className="rounded-md bg-muted px-2 py-1 text-[11px] text-muted-foreground"
-                    >
-                      {t}
-                    </span>
-                  ))}
-                </div>
-                <div className="flex items-center justify-end gap-2 border-t border-border pt-4">
-                  <button
-                    type="button"
-                    onClick={() => setEditing(true)}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-muted/60 px-3 py-1.5 text-xs font-medium shadow-sm ring-1 ring-border/50 transition-all hover:bg-accent hover:text-accent-foreground hover:shadow-md active:scale-95"
-                    title="Edit place"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmDelete(true)}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-muted/60 px-3 py-1.5 text-xs font-medium shadow-sm ring-1 ring-border/50 transition-all hover:bg-destructive/15 hover:text-destructive hover:ring-destructive/30 hover:shadow-md active:scale-95"
-                    title="Delete place"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Delete
-                  </button>
-                </div>
-              </>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </div>

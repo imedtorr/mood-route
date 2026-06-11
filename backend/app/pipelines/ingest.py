@@ -211,14 +211,14 @@ async def run_ingest_pipeline(db: Session, upload_id: str) -> None:
 
         if not _set_upload(db, upload, "Classifying categories", 85):
             return
-        await verify_places(db, ws_id, places, check_duplicates=True, run_id=run_id)
+        reviews = await verify_places(db, ws_id, places, check_duplicates=True, run_id=run_id)
         for place in places:
             upsert_place(place)
 
         if _is_cancelled(db, upload_id):
             return
 
-        needs_review = any(
+        needs_review = bool(reviews) or any(
             p.confidence < 0.7 or p.verification in ("Unverified", "Needs Recheck")
             for p in places
         )

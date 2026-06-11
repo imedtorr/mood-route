@@ -215,11 +215,14 @@ async def enrich_place(
             place.address = resolved_address
 
     if tavily_service.available:
-        place.verification = verification
         if specific and verification == "Verified":
+            # Tavily passed, but human review is still required before a Verified badge.
+            place.verification = "Unverified"
             place.confidence = max(place.confidence, conf)
-        elif not specific:
-            place.confidence = min(place.confidence, 0.55)
+        else:
+            place.verification = verification
+            if not specific:
+                place.confidence = min(place.confidence, 0.55)
 
     similar = search_places(workspace_id, place.title, n=3)
     if similar:

@@ -5,7 +5,6 @@ import { useApp } from "@/lib/app-context";
 import { usePlaceSearch } from "@/lib/api/hooks";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 
 export function Topbar() {
@@ -80,10 +79,6 @@ export function Topbar() {
         >
           <PanelRight className="size-5" />
         </Button>
-
-        <Avatar className="size-9 border border-border">
-          <AvatarFallback className="bg-accent text-accent-foreground">MR</AvatarFallback>
-        </Avatar>
       </div>
     </header>
   );

@@ -1,6 +1,6 @@
 import type { Place } from "@/lib/types";
 import { resolveImageUrl } from "@/lib/api/client";
-import { VerificationBadge, SourceBadge, ConfidenceBadge, CategoryBadge } from "./badges";
+import { VerificationBadge, ConfidenceBadge, CategoryBadge } from "./badges";
 import { AlertTriangle, MapPin } from "lucide-react";
 
 function hasMapCoordinates(place: Place): boolean {
@@ -21,12 +21,11 @@ export function PlaceCard({ place, onClick }: { place: Place; onClick?: () => vo
           style={{ height: place.height ?? 300 }}
           className="w-full object-cover transition duration-500 group-hover:scale-[1.03]"
         />
-        <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-2">
-          <SourceBadge source={place.source} compact className="max-w-[48%] shrink-0 shadow-sm backdrop-blur-sm" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-end p-2">
           <VerificationBadge
             status={place.verification}
             compact
-            className="max-w-[48%] shrink-0 shadow-sm backdrop-blur-sm"
+            className="shrink-0 shadow-sm backdrop-blur-sm"
           />
         </div>
       </div>
@@ -48,7 +47,7 @@ export function PlaceCard({ place, onClick }: { place: Place; onClick?: () => vo
             </p>
           ) : null}
         </div>
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap items-center gap-1">
           <CategoryBadge category={place.category} />
           {place.tags.slice(0, 2).map((t) => (
             <span

@@ -72,7 +72,31 @@ def _source_urls_for_places(db: Session, places: list[PlaceModel]) -> dict[str, 
     return {uid: url for uid, url in rows if url}
 
 
-def place_to_schema(p: PlaceModel, source_url: str | None = None) -> Place:
+def _pending_review_place_ids(
+    db: Session, workspace_id: str, place_ids: list[str]
+) -> set[str]:
+    if not place_ids:
+        return set()
+    reviews = db.query(ReviewModel).filter(
+        ReviewModel.workspace_id == workspace_id,
+        ReviewModel.resolved == False,
+    ).all()
+    want = set(place_ids)
+    pending: set[str] = set()
+    for review in reviews:
+        for pid in review.place_ids:
+            if pid in want:
+                pending.add(pid)
+    return pending
+
+
+def place_to_schema(
+    p: PlaceModel,
+    source_url: str | None = None,
+    *,
+    pending_review: bool = False,
+) -> Place:
+    verification = "Needs Recheck" if pending_review else p.verification
     return Place(
         id=p.id,
         title=p.title,
@@ -82,7 +106,7 @@ def place_to_schema(p: PlaceModel, source_url: str | None = None) -> Place:
         tags=p.tags,
         source=p.source,
         confidence=p.confidence,
-        verification=p.verification,
+        verification=verification,
         image=p.image,
         description=p.description,
         aestheticNote=p.aesthetic_note,
@@ -97,9 +121,17 @@ def place_to_schema(p: PlaceModel, source_url: str | None = None) -> Place:
 
 
 def places_to_schema(db: Session, places: list[PlaceModel]) -> list[Place]:
+    if not places:
+        return []
+    workspace_id = places[0].workspace_id
+    pending = _pending_review_place_ids(db, workspace_id, [p.id for p in places])
     url_by_upload = _source_urls_for_places(db, places)
     return [
-        place_to_schema(p, url_by_upload.get(p.upload_id) if p.upload_id else None)
+        place_to_schema(
+            p,
+            url_by_upload.get(p.upload_id) if p.upload_id else None,
+            pending_review=p.id in pending,
+        )
         for p in places
     ]
 
