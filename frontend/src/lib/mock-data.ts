@@ -32,22 +32,6 @@ export const workspaces: Workspace[] = [
     city: "Tokyo",
     destination: "Tokyo, Japan",
   },
-  {
-    id: "it",
-    name: "Italy Summer",
-    flag: "🇮🇹",
-    country: "Italy",
-    city: "Rome",
-    destination: "Rome, Italy",
-  },
-  {
-    id: "cn",
-    name: "China 2026",
-    flag: "🇨🇳",
-    country: "China",
-    city: "Shanghai",
-    destination: "Shanghai, China",
-  },
 ];
 
 const img = (id: string, w = 600, h = 800) =>

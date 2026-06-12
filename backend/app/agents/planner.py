@@ -121,12 +121,19 @@ async def generate_itinerary(
 ) -> tuple[list[ItineraryDay], SourcesSummary, str]:
     await _ensure_coordinates_for_places(db, workspace_id, places, run_id=run_id)
 
-    routable = [
+    with_coords = [
         place for place in places
         if _is_routable_place(place) and _has_coordinates(place)
     ]
+    without_coords = [
+        place for place in places
+        if _is_routable_place(place) and not _has_coordinates(place)
+    ]
+    routable = with_coords + without_coords
     if not routable:
         routable = [place for place in places if _has_coordinates(place)]
+        if not routable:
+            routable = [place for place in places if _is_routable_place(place)]
 
     if req.intensity == "Packed":
         target_count = len(routable)

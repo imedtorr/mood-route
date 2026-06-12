@@ -283,6 +283,10 @@ function PlaceDrawer({
       onChange(updated);
       if (hasMapCoordinates(updated)) {
         toast.success("Address found and added to map");
+      } else if (updated.address?.trim()) {
+        toast.error(
+          "Coordinates not found. The address text is saved, but this place is not on the map yet.",
+        );
       } else {
         toast.error("Could not find address. Try refining the name or address.");
       }

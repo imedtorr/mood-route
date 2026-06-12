@@ -11,6 +11,9 @@ from app.services.gigachat import gigachat_service
 from app.services.llm_utils import normalize_aesthetic_tags
 from app.services.tavily import tavily_service
 
+# Aligned with verifier.py low-confidence review threshold.
+AUTO_VERIFY_CONFIDENCE_THRESHOLD = 0.7
+
 
 def _geocode_title(place: PlaceModel) -> str:
     place_dict = {
@@ -216,9 +219,12 @@ async def enrich_place(
 
     if tavily_service.available:
         if specific and verification == "Verified":
-            # Tavily passed, but human review is still required before a Verified badge.
-            place.verification = "Unverified"
-            place.confidence = max(place.confidence, conf)
+            merged_confidence = max(place.confidence, conf)
+            place.confidence = merged_confidence
+            if merged_confidence >= AUTO_VERIFY_CONFIDENCE_THRESHOLD:
+                place.verification = "Verified"
+            else:
+                place.verification = "Unverified"
         else:
             place.verification = verification
             if not specific:

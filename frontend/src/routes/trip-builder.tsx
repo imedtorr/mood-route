@@ -48,6 +48,7 @@ function TripBuilder() {
     estimate === 0 ? 0 : isPacked ? Math.ceil(estimate / days) : Math.min(intensityCap, Math.ceil(estimate / days));
   const isCappedByTrip = !isPacked && pool.length > 0 && estimate < pool.length;
   const excludedFromPool = places.length - pool.length;
+  const missingCoordinates = pool.filter((p) => p.lat == null || p.lng == null).length;
 
   async function handleGenerate() {
     try {
@@ -210,6 +211,13 @@ function TripBuilder() {
               <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-400">
                 {excludedFromPool} saved place{excludedFromPool === 1 ? "" : "s"} excluded — low
                 confidence or needs recheck.
+              </p>
+            )}
+            {missingCoordinates > 0 && (
+              <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-400">
+                {missingCoordinates} place{missingCoordinates === 1 ? "" : "s"} still need
+                an address — they will appear in the itinerary but may be missing from the map
+                until geocoded.
               </p>
             )}
 

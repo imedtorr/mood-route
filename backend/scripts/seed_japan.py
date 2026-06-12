@@ -14,6 +14,7 @@ from app.db.models import (
     WorkspaceModel,
 )
 from app.rag.store import bulk_upsert_places
+from app.services.workspaces import delete_workspace
 
 IMG = lambda pid, w=600, h=800: (
     f"https://images.unsplash.com/photo-{pid}?auto=format&fit=crop&w={w}&h={h}&q=80"
@@ -245,19 +246,18 @@ AGENT_EVENTS = [
 ]
 
 
+LEGACY_WORKSPACE_IDS = ("it", "cn")
+
+
 def seed_db(db: Session) -> None:
+    for legacy_id in LEGACY_WORKSPACE_IDS:
+        if db.get(WorkspaceModel, legacy_id):
+            delete_workspace(db, legacy_id)
+
     workspaces = [
         WorkspaceModel(
             id="jp", name="Japan Autumn", flag="🇯🇵",
             country="Japan", city="Tokyo", destination="Tokyo, Japan",
-        ),
-        WorkspaceModel(
-            id="it", name="Italy Summer", flag="🇮🇹",
-            country="Italy", city="Rome", destination="Rome, Italy",
-        ),
-        WorkspaceModel(
-            id="cn", name="China 2026", flag="🇨🇳",
-            country="China", city="Shanghai", destination="Shanghai, China",
         ),
     ]
     for ws in workspaces:
